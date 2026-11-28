@@ -15,10 +15,10 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
-const {ipcRenderer} = require("electron")
-const {
+import {ipcRenderer} from "electron"
+import {platform} from "node:os"
+import {
     appData,
     domainName,
     joinPath,
@@ -26,9 +26,9 @@ const {
     readJSON,
     urlToString,
     writeJSON
-} = require("../util")
-const {getSetting} = require("./settings")
-const {
+} from "../util.js"
+import {getMouseConf, getSetting} from "./settings.js"
+import {
     currentMode,
     currentPage,
     listReadyPages,
@@ -36,7 +36,7 @@ const {
     pageOffset,
     sendToPageOrSubFrame,
     tabForPage
-} = require("./util")
+} from "./util.js"
 
 let X = 0
 let Y = 0
@@ -55,7 +55,7 @@ const zoomX = () => Math.round(X / (currentPage()?.getZoomFactor() ?? 1))
 const zoomY = () => Math.round(Y / (currentPage()?.getZoomFactor() ?? 1))
 
 /** Update the pointer position to respect bounds and send the new hover. */
-const updateElement = () => {
+export const updateElement = async() => {
     const pointerEl = document.getElementById("pointer")
     const page = currentPage()
     if (!pointerEl || !page) {
@@ -70,13 +70,13 @@ const updateElement = () => {
     currentPage()?.setAttribute("pointer-x", `${X}`)
     currentPage()?.setAttribute("pointer-y", `${Y}`)
     if (currentMode() === "pointer") {
-        sendToPageOrSubFrame("send-input-event",
+        await sendToPageOrSubFrame("send-input-event",
             {"type": "hover", "x": X, "y": Y})
     }
     if (currentMode() === "visual") {
         lastSelection = {"endX": X, "endY": Y, startX, startY}
         const factor = currentPage()?.getZoomFactor() ?? 1
-        sendToPageOrSubFrame("action", "selectionRequest",
+        await sendToPageOrSubFrame("action", "selectionRequest",
             Math.round(startX / factor), Math.round(startY / factor),
             zoomX(), zoomY())
     }
@@ -87,31 +87,32 @@ const updateElement = () => {
  * @param {number} x
  * @param {number} y
  */
-const move = (x, y) => {
+export const move = async(x, y) => {
     X = x
     Y = y
-    updateElement()
+    await updateElement()
 }
 
 /**
  * Handle a difference in scroll height.
  * @param {number} diff
  */
-const handleScrollDiffEvent = diff => {
+export const handleScrollDiffEvent = async diff => {
     startY += diff
     if (listenForScroll) {
         Y += diff
-        updateElement()
+        await updateElement()
         listenForScroll = false
     }
 }
 
 /** Remove the hover and selection from the page. */
-const releaseKeys = () => {
+export const releaseKeys = async() => {
     try {
-        sendToPageOrSubFrame("send-input-event",
+        await sendToPageOrSubFrame("send-input-event",
             {"type": "leave", "x": X, "y": Math.max(1, Y)})
-        sendToPageOrSubFrame("action", "selectionRemove", zoomX(), zoomY())
+        await sendToPageOrSubFrame("action", "selectionRemove",
+            zoomX(), zoomY())
     } catch {
         // Can't release keys, probably because of opening a new tab
     }
@@ -122,7 +123,7 @@ const releaseKeys = () => {
  * Store the latest mouse selection.
  * @param {typeof lastSelection|null} selection
  */
-const storeMouseSelection = selection => {
+export const storeMouseSelection = selection => {
     mouseSelection = selection
 }
 
@@ -132,17 +133,18 @@ const storeMouseSelection = selection => {
  * Start pointer mode.
  * @param {{x?: number, y?: number} | null} args
  */
-const start = async(args = null) => {
+export const start = async(args = null) => {
     X = args?.x || Number(currentPage()?.getAttribute("pointer-x")) || X
     Y = args?.y || Number(currentPage()?.getAttribute("pointer-y")) || Y
-    const {setMode} = require("./modes")
+    const {setMode} = await import("./modes.js")
     await setMode("pointer")
-    sendToPageOrSubFrame("send-input-event", {"type": "hover", "x": X, "y": Y})
-    updateElement()
+    await sendToPageOrSubFrame("send-input-event",
+        {"type": "hover", "x": X, "y": Y})
+    await updateElement()
 }
 
 /** Move the pointer to the current mouse position. */
-const moveToMouse = async() => {
+export const moveToMouse = async() => {
     const mousePos = await ipcRenderer.invoke("mouse-location")
     if (mousePos) {
         for (const el of document.elementsFromPoint(mousePos.x, mousePos.y)) {
@@ -151,7 +153,7 @@ const moveToMouse = async() => {
                 continue
             }
             if (el !== currentPage() || currentMode() !== "visual") {
-                const {switchToTab} = require("./tabs")
+                const {switchToTab} = await import("./tabs.js")
                 // @ts-expect-error el is checked to be a webview above
                 await switchToTab(tabForPage(el))
             }
@@ -159,7 +161,7 @@ const moveToMouse = async() => {
             if (currentMode() === "visual") {
                 X = mousePos.x - containerPos.left
                 Y = mousePos.y - containerPos.top
-                updateElement()
+                await updateElement()
             } else {
                 await start({
                     "x": mousePos.x - containerPos.left,
@@ -171,19 +173,19 @@ const moveToMouse = async() => {
 }
 
 /** Restore the previous visual mode selection. */
-const restoreSelection = async() => {
+export const restoreSelection = async() => {
     ({"endX": X, "endY": Y, startX, startY} = mouseSelection || lastSelection)
     mouseSelection = null
-    const {setMode} = require("./modes")
+    const {setMode} = await import("./modes.js")
     await setMode("visual")
-    updateElement()
+    await updateElement()
 }
 
 /**
  * Open the audio src in a new split.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const splitAudio = args => sendToPageOrSubFrame("contextmenu-data", {
+export const splitAudio = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "split",
     "src": args.src,
     "type": "audio",
@@ -193,9 +195,9 @@ const splitAudio = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the frame src in a new split.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const splitFrame = args => sendToPageOrSubFrame("contextmenu-data", {
+export const splitFrame = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "split",
     "src": args.src,
     "type": "frame",
@@ -205,9 +207,9 @@ const splitFrame = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the hover link src in a new split.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const splitLink = args => sendToPageOrSubFrame("contextmenu-data", {
+export const splitLink = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "split",
     "src": args.src,
     "type": "link",
@@ -217,9 +219,9 @@ const splitLink = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the image src in a new split.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const splitImage = args => sendToPageOrSubFrame("contextmenu-data", {
+export const splitImage = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "split",
     "src": args.src,
     "type": "img",
@@ -229,9 +231,9 @@ const splitImage = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the video src in a new split.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const splitVideo = args => sendToPageOrSubFrame("contextmenu-data", {
+export const splitVideo = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "split",
     "src": args.src,
     "type": "video",
@@ -241,9 +243,9 @@ const splitVideo = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the audio src in a new vertical split.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const vsplitAudio = args => sendToPageOrSubFrame("contextmenu-data", {
+export const vsplitAudio = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "vsplit",
     "src": args.src,
     "type": "audio",
@@ -253,9 +255,9 @@ const vsplitAudio = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the frame src in a new vertical split.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const vsplitFrame = args => sendToPageOrSubFrame("contextmenu-data", {
+export const vsplitFrame = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "vsplit",
     "src": args.src,
     "type": "frame",
@@ -265,9 +267,9 @@ const vsplitFrame = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the hover link in a new vertical split.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const vsplitLink = args => sendToPageOrSubFrame("contextmenu-data", {
+export const vsplitLink = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "vsplit",
     "src": args.src,
     "type": "link",
@@ -277,9 +279,9 @@ const vsplitLink = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the image src in a new vertical split.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const vsplitImage = args => sendToPageOrSubFrame("contextmenu-data", {
+export const vsplitImage = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "vsplit",
     "src": args.src,
     "type": "img",
@@ -289,9 +291,9 @@ const vsplitImage = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the video src in a new vertical split.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const vsplitVideo = args => sendToPageOrSubFrame("contextmenu-data", {
+export const vsplitVideo = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "vsplit",
     "src": args.src,
     "type": "video",
@@ -301,9 +303,9 @@ const vsplitVideo = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Download the audio src.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const downloadAudio = args => sendToPageOrSubFrame("contextmenu-data", {
+export const downloadAudio = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "download",
     "src": args.src,
     "type": "audio",
@@ -313,9 +315,9 @@ const downloadAudio = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Download the frame src.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const downloadFrame = args => sendToPageOrSubFrame("contextmenu-data", {
+export const downloadFrame = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "download",
     "src": args.src,
     "type": "frame",
@@ -325,9 +327,9 @@ const downloadFrame = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Download the hover link.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const downloadLink = args => sendToPageOrSubFrame("contextmenu-data", {
+export const downloadLink = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "download",
     "src": args.src,
     "type": "link",
@@ -337,9 +339,9 @@ const downloadLink = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Download the image src.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const downloadImage = args => sendToPageOrSubFrame("contextmenu-data", {
+export const downloadImage = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "download",
     "src": args.src,
     "type": "img",
@@ -349,9 +351,9 @@ const downloadImage = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Download the video src.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const downloadVideo = args => sendToPageOrSubFrame("contextmenu-data", {
+export const downloadVideo = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "download",
     "src": args.src,
     "type": "video",
@@ -361,9 +363,9 @@ const downloadVideo = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the audio src in a new tab.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const newtabAudio = args => sendToPageOrSubFrame("contextmenu-data", {
+export const newtabAudio = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "newtab",
     "src": args.src,
     "type": "audio",
@@ -373,9 +375,9 @@ const newtabAudio = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the frame src in a new tab.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const newtabFrame = args => sendToPageOrSubFrame("contextmenu-data", {
+export const newtabFrame = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "newtab",
     "src": args.src,
     "type": "frame",
@@ -385,9 +387,9 @@ const newtabFrame = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the hover link in a new tab.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const newtabLink = args => sendToPageOrSubFrame("contextmenu-data", {
+export const newtabLink = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "newtab",
     "src": args.src,
     "type": "link",
@@ -397,9 +399,9 @@ const newtabLink = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the image src in a new tab.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const newtabImage = args => sendToPageOrSubFrame("contextmenu-data", {
+export const newtabImage = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "newtab",
     "src": args.src,
     "type": "img",
@@ -409,9 +411,9 @@ const newtabImage = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the video src in a new tab.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const newtabVideo = args => sendToPageOrSubFrame("contextmenu-data", {
+export const newtabVideo = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "newtab",
     "src": args.src,
     "type": "video",
@@ -421,9 +423,9 @@ const newtabVideo = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Navigate to the audio src.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const openAudio = args => sendToPageOrSubFrame("contextmenu-data", {
+export const openAudio = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "open",
     "src": args.src,
     "type": "audio",
@@ -433,9 +435,9 @@ const openAudio = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Navigate to the frame src.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const openFrame = args => sendToPageOrSubFrame("contextmenu-data", {
+export const openFrame = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "open",
     "src": args.src,
     "type": "frame",
@@ -445,9 +447,9 @@ const openFrame = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Navigate to the hover link.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const openLink = args => sendToPageOrSubFrame("contextmenu-data", {
+export const openLink = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "open",
     "src": args.src,
     "type": "link",
@@ -457,9 +459,9 @@ const openLink = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Navigate to the image src.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const openImage = args => sendToPageOrSubFrame("contextmenu-data", {
+export const openImage = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "open",
     "src": args.src,
     "type": "img",
@@ -469,9 +471,9 @@ const openImage = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Navigate to the video src.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const openVideo = args => sendToPageOrSubFrame("contextmenu-data", {
+export const openVideo = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "open",
     "src": args.src,
     "type": "video",
@@ -481,9 +483,9 @@ const openVideo = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the audio src in an external program.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const externalAudio = args => sendToPageOrSubFrame("contextmenu-data", {
+export const externalAudio = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "external",
     "src": args.src,
     "type": "audio",
@@ -493,9 +495,9 @@ const externalAudio = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the frame src in an external program.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const externalFrame = args => sendToPageOrSubFrame("contextmenu-data", {
+export const externalFrame = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "external",
     "src": args.src,
     "type": "frame",
@@ -505,9 +507,9 @@ const externalFrame = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the hover link in an external program.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const externalLink = args => sendToPageOrSubFrame("contextmenu-data", {
+export const externalLink = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "external",
     "src": args.src,
     "type": "link",
@@ -517,9 +519,9 @@ const externalLink = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the image src in an external program.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const externalImage = args => sendToPageOrSubFrame("contextmenu-data", {
+export const externalImage = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "external",
     "src": args.src,
     "type": "img",
@@ -529,9 +531,9 @@ const externalImage = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the video src in an external program.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const externalVideo = args => sendToPageOrSubFrame("contextmenu-data", {
+export const externalVideo = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "external",
     "src": args.src,
     "type": "video",
@@ -541,9 +543,9 @@ const externalVideo = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Copy the audio src to the clipboard.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const copyAudio = args => sendToPageOrSubFrame("contextmenu-data", {
+export const copyAudio = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "copy",
     "src": args.src,
     "type": "audio",
@@ -553,9 +555,9 @@ const copyAudio = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Copy the frame src to the clipboard.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const copyFrame = args => sendToPageOrSubFrame("contextmenu-data", {
+export const copyFrame = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "copy",
     "src": args.src,
     "type": "frame",
@@ -565,9 +567,9 @@ const copyFrame = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Copy the hover link to the clipboard.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const copyLink = args => sendToPageOrSubFrame("contextmenu-data", {
+export const copyLink = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "copy",
     "src": args.src,
     "type": "link",
@@ -577,21 +579,22 @@ const copyLink = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Copy the image buffer data to the clipboard.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const copyImageBuffer = args => sendToPageOrSubFrame("contextmenu-data", {
-    "action": "copyimage",
-    "src": args.src,
-    "type": "img",
-    "x": zoomX(),
-    "y": zoomY()
-})
+export const copyImageBuffer = args => sendToPageOrSubFrame(
+    "contextmenu-data", {
+        "action": "copyimage",
+        "src": args.src,
+        "type": "img",
+        "x": zoomX(),
+        "y": zoomY()
+    })
 
 /**
  * Copy the image src to the clipboard.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const copyImage = args => sendToPageOrSubFrame("contextmenu-data", {
+export const copyImage = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "copy",
     "src": args.src,
     "type": "img",
@@ -601,9 +604,9 @@ const copyImage = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Copy the video src to the clipboard.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const copyVideo = args => sendToPageOrSubFrame("contextmenu-data", {
+export const copyVideo = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "copy",
     "src": args.src,
     "type": "video",
@@ -613,9 +616,9 @@ const copyVideo = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Copy the title attribute to the clipboard.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const copyTitleAttr = args => sendToPageOrSubFrame("contextmenu-data", {
+export const copyTitleAttr = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "copy",
     "src": args.src,
     "type": "titleAttr",
@@ -625,9 +628,9 @@ const copyTitleAttr = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Copy the page title to the clipboard.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const copyPageTitle = args => sendToPageOrSubFrame("contextmenu-data", {
+export const copyPageTitle = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "copy",
     "src": args.src,
     "type": "linkPageTitle",
@@ -637,9 +640,9 @@ const copyPageTitle = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the selected text in a new split.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const splitText = args => sendToPageOrSubFrame("contextmenu-data", {
+export const splitText = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "split",
     "src": args.src,
     "type": "text",
@@ -649,9 +652,9 @@ const splitText = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the selected text in a new vertical split.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const vsplitText = args => sendToPageOrSubFrame("contextmenu-data", {
+export const vsplitText = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "vsplit",
     "src": args.src,
     "type": "text",
@@ -661,9 +664,9 @@ const vsplitText = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Download the selected text as if a link.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const downloadText = args => sendToPageOrSubFrame("contextmenu-data", {
+export const downloadText = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "download",
     "src": args.src,
     "type": "text",
@@ -673,9 +676,9 @@ const downloadText = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the selected text in a new tab (either as search or url).
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const newtabText = args => sendToPageOrSubFrame("contextmenu-data", {
+export const newtabText = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "newtab",
     "src": args.src,
     "type": "text",
@@ -685,9 +688,9 @@ const newtabText = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Navigate to the selected text (either as search or url).
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const openText = args => sendToPageOrSubFrame("contextmenu-data", {
+export const openText = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "open",
     "src": args.src,
     "type": "text",
@@ -697,9 +700,9 @@ const openText = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Open the selected text in an external program.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const externalText = args => sendToPageOrSubFrame("contextmenu-data", {
+export const externalText = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "external",
     "src": args.src,
     "type": "text",
@@ -709,9 +712,9 @@ const externalText = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Copy the selected text to the clipboard.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const copyText = args => sendToPageOrSubFrame("contextmenu-data", {
+export const copyText = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "copy",
     "src": args.src,
     "type": "text",
@@ -721,9 +724,9 @@ const copyText = args => sendToPageOrSubFrame("contextmenu-data", {
 
 /**
  * Search the page for the selected text.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const searchText = args => sendToPageOrSubFrame("contextmenu-data", {
+export const searchText = args => sendToPageOrSubFrame("contextmenu-data", {
     "action": "search",
     "src": args.src,
     "type": "text",
@@ -732,33 +735,39 @@ const searchText = args => sendToPageOrSubFrame("contextmenu-data", {
 })
 
 /** Toggle media playback for the hovered audio/video element. */
-const toggleMediaPlay = () => sendToPageOrSubFrame(
+export const toggleMediaPlay = () => sendToPageOrSubFrame(
     "action", "togglePause", X, Y)
 
 /** Lower the volume for the hovered audio/video element. */
-const mediaDown = () => sendToPageOrSubFrame("action", "volumeDown", X, Y)
+export const mediaDown = () => sendToPageOrSubFrame(
+    "action", "volumeDown", X, Y)
 
 /** Incease the volume for the hovered audio/video element. */
-const mediaUp = () => sendToPageOrSubFrame("action", "volumeUp", X, Y)
+export const mediaUp = () => sendToPageOrSubFrame(
+    "action", "volumeUp", X, Y)
 
 /** Decrease the playbackRate for the hovered audio/video element. */
-const mediaSlower = () => sendToPageOrSubFrame("action", "playbackDown", X, Y)
+export const mediaSlower = () => sendToPageOrSubFrame(
+    "action", "playbackDown", X, Y)
 
 /** Increase the playbackRate for the hovered audio/video element. */
-const mediaFaster = () => sendToPageOrSubFrame("action", "playbackUp", X, Y)
+export const mediaFaster = () => sendToPageOrSubFrame(
+    "action", "playbackUp", X, Y)
 
 /** Toggle the mute state for the hovered audio/video element. */
-const toggleMediaMute = () => sendToPageOrSubFrame("action", "toggleMute", X, Y)
+export const toggleMediaMute = () => sendToPageOrSubFrame(
+    "action", "toggleMute", X, Y)
 
 /** Toggle the loop state for the hovered audio/video element. */
-const toggleMediaLoop = () => sendToPageOrSubFrame("action", "toggleLoop", X, Y)
+export const toggleMediaLoop = () => sendToPageOrSubFrame(
+    "action", "toggleLoop", X, Y)
 
 /** Toggle the native controls for the hovered audio/video element. */
-const toggleMediaControls = () => sendToPageOrSubFrame(
+export const toggleMediaControls = () => sendToPageOrSubFrame(
     "action", "toggleControls", X, Y)
 
 /** Inspect the hovered element in the devtools (opens if needed). */
-const inspectElement = () => {
+export const inspectElement = () => {
     const page = currentPage()
     if (page) {
         const containerPos = pageContainerPos()
@@ -768,94 +777,92 @@ const inspectElement = () => {
 }
 
 /** Left click on the current hovered element. */
-const leftClick = () => {
-    sendToPageOrSubFrame("send-input-event", {"type": "click", "x": X, "y": Y})
-}
+export const leftClick = () => sendToPageOrSubFrame("send-input-event",
+    {"type": "click", "x": X, "y": Y})
 
 /** Move the pointer to the top of the page including scrolling. */
-const startOfPage = async() => {
-    const {scrollTop} = require("./actions")
+export const startOfPage = async() => {
+    const {scrollTop} = await import("./actions.js")
     await scrollTop()
     Y = 0
-    updateElement()
+    await updateElement()
 }
 
 /** Move the pointer 100px left. */
-const moveFastLeft = () => {
+export const moveFastLeft = async() => {
     X -= 100
-    updateElement()
+    await updateElement()
 }
 
 /** Move the pointer 10px left. */
-const moveLeft = () => {
+export const moveLeft = async() => {
     X -= 10
-    updateElement()
+    await updateElement()
 }
 
 /** Focus an input at the pointer position (goes to insert mode if found). */
-const insertAtPosition = () => {
+export const insertAtPosition = async() => {
     const factor = currentPage()?.getZoomFactor() ?? 1
-    sendToPageOrSubFrame("focus-input", {"x": X * factor, "y": Y * factor})
+    await sendToPageOrSubFrame("focus-input",
+        {"x": X * factor, "y": Y * factor})
 }
 
 /** Move the pointer 10px down, scrolling the page as needed. */
-const moveDown = async() => {
+export const moveDown = async() => {
     const page = currentPage()
     if (!page) {
         return
     }
     const {bottom, top} = pageOffset(page)
     if (Y === bottom - top - getSetting("guifontsize")) {
-        const {"scrollDown": scroll} = require("./actions")
+        const {"scrollDown": scroll} = await import("./actions.js")
         await scroll()
         listenForScroll = true
     } else {
         Y += 10
     }
-    updateElement()
+    await updateElement()
 }
 
 /** Move the pointer 10px up, scrolling the page as needed. */
-const moveUp = async() => {
+export const moveUp = async() => {
     if (Y === 0) {
-        const {"scrollUp": scroll} = require("./actions")
+        const {"scrollUp": scroll} = await import("./actions.js")
         await scroll()
         listenForScroll = true
     } else {
         Y -= 10
     }
-    updateElement()
+    await updateElement()
 }
 
 /** Move the pointer 10px right. */
-const moveRight = () => {
+export const moveRight = async() => {
     X += 10
-    updateElement()
+    await updateElement()
 }
 
 /** Right click on the current hover element. */
-const rightClick = () => {
-    sendToPageOrSubFrame("send-input-event",
+export const rightClick = async() => {
+    await sendToPageOrSubFrame("send-input-event",
         {"button": "right", "type": "click", "x": X, "y": Y})
-    const {storePointerRightClick} = require("./contextmenu")
+    const {storePointerRightClick} = await import("./contextmenu.js")
     storePointerRightClick()
 }
 
 /**
  * Open the page menu if as if right-clicked and enabled.
- * @param {import("./actions").ActionParam} args
+ * @param {import("./actions.js").ActionParam} args
  */
-const openMenu = args => {
-    sendToPageOrSubFrame("contextmenu-data",
-        {"force": true, "src": args.src, "x": zoomX(), "y": zoomY()})
-}
+export const openMenu = args => sendToPageOrSubFrame("contextmenu-data",
+    {"force": true, "src": args.src, "x": zoomX(), "y": zoomY()})
 
 /** Switch to visual mode and store start location. */
-const startVisualSelect = async() => {
+export const startVisualSelect = async() => {
     if (mouseSelection && getSetting("mousevisualmode") !== "never") {
         await restoreSelection()
     } else {
-        const {setMode} = require("./modes")
+        const {setMode} = await import("./modes.js")
         await setMode("visual")
         startX = Number(X)
         startY = Number(Y)
@@ -863,150 +870,150 @@ const startVisualSelect = async() => {
 }
 
 /** Swap the current start location and the pointer while in visual mode. */
-const swapPosition = () => {
+export const swapPosition = async() => {
     if (currentMode() !== "visual") {
         return
     }
     [startX, X] = [X, startX]
     ;[startY, Y] = [Y, startY]
-    updateElement()
+    await updateElement()
 }
 
 /** Move the pointer 100px right. */
-const moveFastRight = () => {
+export const moveFastRight = async() => {
     X += 100
-    updateElement()
+    await updateElement()
 }
 
 /** Move the pointer to the center of the view vertically. */
-const centerOfView = () => {
+export const centerOfView = async() => {
     const page = currentPage()
     if (!page) {
         return
     }
     const {bottom, top} = pageOffset(page)
     Y = (bottom - top) / 2
-    updateElement()
+    await updateElement()
 }
 
 /** Scroll 100px down at the current hover element. */
-const scrollDown = () => {
-    sendToPageOrSubFrame("send-input-event",
+export const scrollDown = async() => {
+    await sendToPageOrSubFrame("send-input-event",
         {"deltaY": -100, "type": "scroll", "x": X, "y": Y})
-    updateElement()
+    await updateElement()
 }
 
 /** Scroll 100px up at the current hover element. */
-const scrollUp = () => {
-    sendToPageOrSubFrame("send-input-event",
+export const scrollUp = async() => {
+    await sendToPageOrSubFrame("send-input-event",
         {"deltaY": 100, "type": "scroll", "x": X, "y": Y})
-    updateElement()
+    await updateElement()
 }
 
 /** Scroll 100px left at the current hover element. */
-const scrollLeft = () => {
-    sendToPageOrSubFrame("send-input-event",
+export const scrollLeft = async() => {
+    await sendToPageOrSubFrame("send-input-event",
         {"deltaX": 100, "type": "scroll", "x": X, "y": Y})
-    updateElement()
+    await updateElement()
 }
 
 /** Scroll 100px right at the current hover element. */
-const scrollRight = () => {
-    sendToPageOrSubFrame("send-input-event",
+export const scrollRight = async() => {
+    await sendToPageOrSubFrame("send-input-event",
         {"deltaX": -100, "type": "scroll", "x": X, "y": Y})
-    updateElement()
+    await updateElement()
 }
 
 /** Move the pointer to the top of the view. */
-const startOfView = () => {
+export const startOfView = async() => {
     Y = 0
-    updateElement()
+    await updateElement()
 }
 
 /** Move the pointer 1px left. */
-const moveSlowLeft = () => {
+export const moveSlowLeft = async() => {
     X -= 1
-    updateElement()
+    await updateElement()
 }
 
 /** Move the pointer 1px down. */
-const moveSlowDown = () => {
+export const moveSlowDown = async() => {
     Y += 1
-    updateElement()
+    await updateElement()
 }
 
 /** Move the pointer 1px up. */
-const moveSlowUp = () => {
+export const moveSlowUp = async() => {
     Y -= 1
-    updateElement()
+    await updateElement()
 }
 
 /** Move the pointer 1px right. */
-const moveSlowRight = () => {
+export const moveSlowRight = async() => {
     X += 1
-    updateElement()
+    await updateElement()
 }
 
 /** Move the pointer to the end of the view. */
-const endOfView = () => {
+export const endOfView = async() => {
     Y = window.innerHeight
-    updateElement()
+    await updateElement()
 }
 
 /** Move the pointer to the end of the page with scrolling. */
-const endOfPage = async() => {
-    const {scrollBottom} = require("./actions")
+export const endOfPage = async() => {
+    const {scrollBottom} = await import("./actions.js")
     await scrollBottom()
     Y = window.innerHeight
-    updateElement()
+    await updateElement()
 }
 
 /** Move the pointer to the right of the view. */
-const moveRightMax = () => {
+export const moveRightMax = async() => {
     X = window.innerWidth
-    updateElement()
+    await updateElement()
 }
 
 /** Move the pointer to the left of the view. */
-const moveLeftMax = () => {
+export const moveLeftMax = async() => {
     X = 0
-    updateElement()
+    await updateElement()
 }
 
 /** Move the pointer 100px down, scrolling the page as needed. */
-const moveFastDown = async() => {
+export const moveFastDown = async() => {
     const page = currentPage()
     if (!page) {
         return
     }
     const {bottom, top} = pageOffset(page)
     if (Y === bottom - top - getSetting("guifontsize")) {
-        const {"scrollDown": scroll} = require("./actions")
+        const {"scrollDown": scroll} = await import("./actions.js")
         await scroll()
         listenForScroll = true
     } else {
         Y += 100
     }
-    updateElement()
+    await updateElement()
 }
 
 /** Move the pointer 100px up, scrolling the page as needed. */
-const moveFastUp = async() => {
+export const moveFastUp = async() => {
     if (Y === 0) {
-        const {"scrollUp": scroll} = require("./actions")
+        const {"scrollUp": scroll} = await import("./actions.js")
         await scroll()
         listenForScroll = true
     } else {
         Y -= 100
     }
-    updateElement()
+    await updateElement()
 }
 
 /**
  * Store a pointer position.
  * @param {{key?: string, location?: {x: number, y: number}, path: string}} args
  */
-const storePos = async args => {
+export const storePos = async args => {
     const key = args?.key
     if (!key) {
         return
@@ -1020,8 +1027,8 @@ const storePos = async args => {
     }
     const qmfile = joinPath(await appData(), "quickmarks")
     /**
-     * @type {import("../util").PartialJSON
-     *   &Partial<import("./actions").Quickmarks>}
+     * @type {import("../util.js").PartialJSON
+     *   &Partial<import("./actions.js").Quickmarks>}
      */
     const qm = await readJSON(qmfile) ?? {}
     if (!("pointer" in qm) || !qm.pointer) {
@@ -1058,7 +1065,7 @@ const storePos = async args => {
  * Restore a pointer position.
  * @param {{key?: string, path?: string}} args
  */
-const restorePos = async args => {
+export const restorePos = async args => {
     const key = args?.key
     if (!key) {
         return
@@ -1075,22 +1082,21 @@ const restorePos = async args => {
     }
     path = args?.path ?? path
     /**
-     * @type {import("../util").PartialJSON
-     *   &Partial<import("./actions").Quickmarks>}
+     * @type {import("../util.js").PartialJSON
+     *   &Partial<import("./actions.js").Quickmarks>}
      */
     const qm = await readJSON(joinPath(await appData(), "quickmarks")) ?? {}
     const pos = qm?.pointer?.local?.[path]?.[key] ?? qm?.pointer?.global?.[key]
     if (pos) {
-        move(pos.x, pos.y)
+        await move(pos.x, pos.y)
     }
 }
 
 /** Register mouse event listeners for context and click info. */
-const init = () => {
-    const {setMode} = require("./modes")
+export const init = () => {
     ipcRenderer.on("mouse-down-location", async(_, clickInfo) => {
-        const {resetInsertLeaveTimeout} = require("./input")
-        const {getMouseConf} = require("./settings")
+        const {setMode} = await import("./modes.js")
+        const {resetInsertLeaveTimeout} = await import("./input.js")
         resetInsertLeaveTimeout()
         if ("ces".includes(currentMode()[0]) && getMouseConf("leaveinput")) {
             await setMode("normal")
@@ -1102,40 +1108,40 @@ const init = () => {
             if (page) {
                 const tab = tabForPage(page)
                 if (tab) {
-                    const {switchToTab} = require("./tabs")
+                    const {switchToTab} = await import("./tabs.js")
                     await switchToTab(tab)
                 }
             }
         }
-        const {clear} = require("./contextmenu")
+        const {clear} = await import("./contextmenu.js")
         clear()
         if (["pointer", "visual"].includes(currentMode())) {
             if (currentMode() === "pointer") {
-                sendToPageOrSubFrame("action",
+                await sendToPageOrSubFrame("action",
                     "selectionRemove", zoomX(), zoomY())
             }
             if (getMouseConf("movepointer")) {
                 const factor = currentPage()?.getZoomFactor() ?? 1
-                move(clickInfo.x * factor, clickInfo.y * factor)
+                await move(clickInfo.x * factor, clickInfo.y * factor)
             } else {
-                updateElement()
+                await updateElement()
             }
         }
-        const {setFocusCorrectly} = require("./actions")
+        const {setFocusCorrectly} = await import("./actions.js")
         await setFocusCorrectly()
     })
     ipcRenderer.on("mouse-click-info", async(_, clickInfo) => {
-        const {resetInsertLeaveTimeout} = require("./input")
+        const {setMode} = await import("./modes.js")
+        const {resetInsertLeaveTimeout} = await import("./input.js")
         resetInsertLeaveTimeout()
         if (skipNextClick) {
             skipNextClick = false
             return
         }
         if (["pointer", "visual"].includes(currentMode())) {
-            updateElement()
+            await updateElement()
             return
         }
-        const {getMouseConf} = require("./settings")
         if (clickInfo.toinsert) {
             if (getMouseConf("toinsert")) {
                 await setMode("insert")
@@ -1144,16 +1150,16 @@ const init = () => {
             && getMouseConf("leaveinput")) {
             await setMode("normal")
         }
-        const {setFocusCorrectly} = require("./actions")
+        const {setFocusCorrectly} = await import("./actions.js")
         await setFocusCorrectly()
         storeMouseSelection(null)
     })
     ipcRenderer.on("mouse-selection", async(_, selectInfo) => {
-        if (process.platform === "linux" || process.platform.includes("bsd")) {
+        const {setMode} = await import("./modes.js")
+        if (platform() === "linux" || platform().includes("bsd")) {
             ipcRenderer.invoke("write-clipboard", selectInfo.text, "selection")
                 .catch(() => null)
         }
-        const {getMouseConf} = require("./settings")
         if (selectInfo.toinsert) {
             if (getMouseConf("toinsert")) {
                 await setMode("insert")
@@ -1175,102 +1181,4 @@ const init = () => {
             }
         }
     })
-}
-
-module.exports = {
-    centerOfView,
-    copyAudio,
-    copyFrame,
-    copyImage,
-    copyImageBuffer,
-    copyLink,
-    copyPageTitle,
-    copyText,
-    copyTitleAttr,
-    copyVideo,
-    downloadAudio,
-    downloadFrame,
-    downloadImage,
-    downloadLink,
-    downloadText,
-    downloadVideo,
-    endOfPage,
-    endOfView,
-    externalAudio,
-    externalFrame,
-    externalImage,
-    externalLink,
-    externalText,
-    externalVideo,
-    handleScrollDiffEvent,
-    init,
-    insertAtPosition,
-    inspectElement,
-    leftClick,
-    mediaDown,
-    mediaFaster,
-    mediaSlower,
-    mediaUp,
-    move,
-    moveDown,
-    moveFastDown,
-    moveFastLeft,
-    moveFastRight,
-    moveFastUp,
-    moveLeft,
-    moveLeftMax,
-    moveRight,
-    moveRightMax,
-    moveSlowDown,
-    moveSlowLeft,
-    moveSlowRight,
-    moveSlowUp,
-    moveToMouse,
-    moveUp,
-    newtabAudio,
-    newtabFrame,
-    newtabImage,
-    newtabLink,
-    newtabText,
-    newtabVideo,
-    openAudio,
-    openFrame,
-    openImage,
-    openLink,
-    openMenu,
-    openText,
-    openVideo,
-    releaseKeys,
-    restorePos,
-    restoreSelection,
-    rightClick,
-    scrollDown,
-    scrollLeft,
-    scrollRight,
-    scrollUp,
-    searchText,
-    splitAudio,
-    splitFrame,
-    splitImage,
-    splitLink,
-    splitText,
-    splitVideo,
-    start,
-    startOfPage,
-    startOfView,
-    startVisualSelect,
-    storeMouseSelection,
-    storePos,
-    swapPosition,
-    toggleMediaControls,
-    toggleMediaLoop,
-    toggleMediaMute,
-    toggleMediaPlay,
-    updateElement,
-    vsplitAudio,
-    vsplitFrame,
-    vsplitImage,
-    vsplitLink,
-    vsplitText,
-    vsplitVideo
 }

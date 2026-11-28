@@ -15,9 +15,8 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
-const {ipcRenderer} = require("electron")
+import {ipcRenderer} from "electron"
 
 const safeElements = new Set([
     "#text",
@@ -39,6 +38,9 @@ const safeElements = new Set([
     "ul"
 ])
 const safeAttributes = new Set(["class", "href"])
+
+/** Generate a very basic ID because crypto is not reliably available at all. */
+const generateBasicId = () => Math.random().toString(36).slice(2)
 
 /**
  * Filter bad elements from a node recursively.
@@ -67,13 +69,13 @@ const onlyKeepSafeNodes = node => {
 
 /**
  * Translate a field, then parse it as HTML and return a list of safe elements.
- * @param {import("../../types/i18n").TranslationKeys} id
+ * @param {import("../../types/i18n.d.ts").TranslationKeys} id
  * @param {{fields?: string[], customLang?: null|string}} opts
  */
-const translateAsHTML = (
+export const translateAsHTML = (
     id, {customLang = null, fields = []} = {}
 ) => new Promise(res => {
-    const uuid = window.crypto.randomUUID()
+    const uuid = generateBasicId()
     ipcRenderer.once(`translate-query-response-${uuid}`, (_, value) => {
         const parsed = new DOMParser().parseFromString(value, "text/html")
         const body = parsed.querySelector("body")
@@ -90,15 +92,15 @@ const translateAsHTML = (
 
 /**
  * Translate a field via the renderer.
- * @param {import("../../types/i18n").TranslationKeys} id
+ * @param {import("../../types/i18n.d.ts").TranslationKeys} id
  * @param {{fields?: string[], customLang?: null|string}} opts
  * @returns {Promise<string>}
  * @throws {Error} When the English language file is not valid.
  */
-const translate = (
+export const translate = (
     id, {customLang = null, fields = []} = {}
 ) => new Promise(res => {
-    const uuid = window.crypto.randomUUID()
+    const uuid = generateBasicId()
     ipcRenderer.once(`translate-query-response-${uuid}`, (_, value) => {
         res(value)
     })
@@ -113,21 +115,24 @@ const translate = (
  *   "linkcolor": string
  * }>}
  */
-const getColorVars = () => new Promise(res => {
+export const getColorVars = () => new Promise(res => {
     ipcRenderer.once(`css-color-query-response`, (_, value) => {
         res(value)
     })
     ipcRenderer.sendToHost("css-color-query")
 })
 
-/** @typedef {typeof import("../renderer/settings").defaultSettings} setting */
+/**
+ * @typedef {typeof import("../renderer/settings.js").defaultSettings} setting
+ */
+
 /**
  * Get a setting via ipc from the renderer.
  * @template {keyof setting} T Valid setting names.
  * @param {T} set
  * @returns {Promise<setting[T]>}
  */
-const getSetting = set => new Promise(res => {
+export const getSetting = set => new Promise(res => {
     ipcRenderer.once(`setting-query-response-${set}`, (_, value) => {
         res(value)
     })
@@ -136,15 +141,15 @@ const getSetting = set => new Promise(res => {
 
 /**
  * Send a notification to the renderer thread.
- * @param {import("../renderer/util").NotificationInfo} opts
+ * @param {import("../renderer/util.js").NotificationInfo} opts
  */
-const notify = opts => ipcRenderer.sendToHost("notify", opts)
+export const notify = opts => ipcRenderer.sendToHost("notify", opts)
 
 /**
  * Detect if an element can be scrolled.
  * @param {Element} el
  */
-const canScroll = el => {
+export const canScroll = el => {
     const hasY = el.scrollHeight > el.clientHeight
     const hasX = el.scrollWidth > el.clientWidth
     if (!hasX && !hasY) {
@@ -156,8 +161,4 @@ const canScroll = el => {
     const canX = hasX && ["auto", "scroll"].includes(
         styles.get("overflow-x")?.toString() ?? "")
     return canX || canY
-}
-
-module.exports = {
-    canScroll, getColorVars, getSetting, notify, translate, translateAsHTML
 }

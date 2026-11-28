@@ -15,10 +15,9 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
-const {fetchJSON} = require("../util")
-const {getSetting} = require("./util")
+import {fetchJSON} from "../util.js"
+import {getSetting} from "./util.js"
 
 /** If enabled via settings, cut out sponsored Youtube video segments. */
 const loadSponsorblock = async() => {

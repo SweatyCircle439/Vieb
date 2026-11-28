@@ -15,7 +15,12 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
+
+import fs from "node:fs"
+import {homedir, platform} from "node:os"
+import path from "node:path"
+import {normalize} from "node:path/posix"
+import rimraf from "./rimraf.js"
 
 /**
  * @typedef {"cookies"|"downloads"|"help"
@@ -32,7 +37,6 @@ const specialPages = new Set([
     "version"
 ])
 let appDataPath = ""
-let homeDirPath = ""
 let appRootDirPath = ""
 /**
  * @type {{
@@ -46,35 +50,34 @@ let appRootDirPath = ""
  *   override: string,
  *   files: string[],
  *   config: string
- *   version: string
- * }|null}
+ *   versions: {
+ *     app: string,
+ *     chrome: string,
+ *     electron: string
+ *   }
+ * }?}
  */
 let configSettings = null
 /** @type {Map<Element|ShadowRoot, {x: number, y: number}>} */
 const framePaddingInfo = new Map()
-const specialChars = /[\s!"#$%&'()*+,./:;<=>?@[\\\]^_`{|}~’”、。！：；-]/gi
-const specialCharsAllowSpaces = /[!"#$%&'()*+,./:;<=>?@[\\\]^_`{|}~’”、。！：；-]/gi
+
+export const specialChars = /[\s!"#$%&'()*+,./:;<=>?@[\\\]^_`{|}~’”、。！：；-]/gi
+
+export const specialCharsAllowSpaces = /[!"#$%&'()*+,./:;<=>?@[\\\]^_`{|}~’”、。！：；-]/gi
 
 /**
  * Join multiple path parts into a single resolved path.
  * @param {string[]} paths
  */
-const joinPath = (...paths) => {
-    const {join, resolve} = require("node:path")
-    return resolve(join(...paths))
-}
+export const joinPath = (...paths) => path.resolve(path.join(...paths))
 
 /**
  * Expand a path that is prefixed with ~ to the user's home folder.
  * @param {string} loc
  */
-const expandPath = loc => {
+export const expandPath = loc => {
     if (loc.startsWith("~")) {
-        if (!homeDirPath) {
-            homeDirPath = process.env.HOME || process.env.USERPROFILE
-                || require("node:os").homedir()
-        }
-        return loc.replace("~", homeDirPath)
+        return loc.replace("~", homedir())
     }
     return loc
 }
@@ -83,26 +86,25 @@ const expandPath = loc => {
  * Check if a path exists.
  * @param {string} loc
  */
-const pathExists = loc => {
+export const pathExists = loc => {
     try {
-        const {existsSync} = require("node:fs")
-        return existsSync(loc)
+        return fs.existsSync(loc)
     } catch {
         return false
     }
 }
 
 /** Get the root app directory from any location. */
-const getAppRootDir = () => {
+export const getAppRootDir = () => {
     if (!appRootDirPath) {
-        let current = __dirname
+        let current = import.meta.dirname
         let tries = 0
         while (!pathExists(joinPath(current, "package.json")) && tries < 100) {
             current = joinPath(current, "..")
             tries += 1
         }
         if (tries === 100) {
-            appRootDirPath = __dirname
+            appRootDirPath = import.meta.dirname
         } else {
             appRootDirPath = joinPath(current, "app")
         }
@@ -111,9 +113,9 @@ const getAppRootDir = () => {
 }
 
 /** Returns the app configuration settings. */
-const appConfig = async() => {
+export const appConfig = async() => {
     if (!configSettings) {
-        const {ipcRenderer} = require("electron")
+        const {ipcRenderer} = await import("electron")
         configSettings = await ipcRenderer.invoke("app-config")
         if (!configSettings) {
             return null
@@ -143,10 +145,10 @@ const appConfig = async() => {
 }
 
 /** Returns the appdata path (works from both main, renderer and preloads). */
-const appData = async() => {
+export const appData = async() => {
     if (!appDataPath) {
         try {
-            const {app} = require("electron")
+            const {app} = await import("electron")
             return app.getPath("appData")
         } catch {
             // Not in main thread
@@ -169,10 +171,9 @@ const appData = async() => {
  * @param {string} loc
  * @returns {PartialJSON|null}
  */
-const readJSONSync = loc => {
+export const readJSONSync = loc => {
     try {
-        const {readFileSync} = require("node:fs")
-        return JSON.parse(readFileSync(loc).toString())
+        return JSON.parse(fs.readFileSync(loc).toString())
     } catch {
         return null
     }
@@ -183,9 +184,8 @@ const readJSONSync = loc => {
  * @param {string} loc
  * @returns {Promise<PartialJSON|null>}
  */
-const readJSON = loc => new Promise(res => {
-    const {"readFile": readFileFS} = require("node:fs")
-    readFileFS(loc, (err, data) => {
+export const readJSON = loc => new Promise(res => {
+    fs.readFile(loc, (err, data) => {
         if (err) {
             res(null)
             return
@@ -202,17 +202,17 @@ const readJSON = loc => new Promise(res => {
  * Return the resolved system that should be exposed via useragent.
  * @param {string} useragentsys
  */
-const userAgentResolvedSystem = (useragentsys = "auto") => {
+export const userAgentResolvedSystem = async(useragentsys = "auto") => {
     let desired = useragentsys ?? "auto"
     if (desired === "auto") {
         try {
-            const {getSetting} = require("./renderer/settings")
+            const {getSetting} = await import("./renderer/settings.js")
             desired = getSetting("useragentsys")
         } catch {
             // Fall back to auto
         }
     }
-    const current = process.platform
+    const current = platform()
     if (desired === "auto" && current === "win32" || desired === "windows") {
         return "windows"
     }
@@ -226,18 +226,23 @@ const userAgentResolvedSystem = (useragentsys = "auto") => {
  * Return per operating system the result of navigator.platform.
  * @param {string} useragentsys
  */
-const userAgentPlatform = (useragentsys = "auto") => ({
+export const userAgentPlatform = async(useragentsys = "auto") => ({
     "linux": "X11; Linux x86_64",
     "mac": "Macintosh; Intel Mac OS X 10_15_7",
     "windows": "Windows NT 10.0; Win64; x64"
-}[userAgentResolvedSystem(useragentsys)])
+}[await userAgentResolvedSystem(useragentsys)])
 
 /** Return the default navigator.userAgent. */
-const defaultUseragent = () => {
-    const [version] = process.versions.chrome.split(".", 1)
-    const sys = userAgentPlatform()
+export const defaultUseragent = async() => {
+    let fullversion = typeof process !== "undefined" && process?.versions.chrome
+    if (!fullversion) {
+        const conf = await appConfig()
+        fullversion = conf?.versions.chrome ?? ""
+    }
+    const version = `${fullversion.split(".", 1)[0]}.0.0.0`
+    const sys = await userAgentPlatform()
     return `Mozilla/5.0 (${sys}) AppleWebKit/537.36 (KHTML, like Gecko) `
-        + `Chrome/${version}.0.0.0 Safari/537.36`
+        + `Chrome/${version} Safari/537.36`
 }
 
 /** Calculate the current Firefox version based on date & release schedule. */
@@ -248,9 +253,9 @@ const firefoxVersion = () => {
 }
 
 /** Return the Firefox navigator.userAgent. */
-const firefoxUseragent = () => {
+export const firefoxUseragent = async() => {
     const ver = firefoxVersion()
-    const sys = userAgentPlatform()
+    const sys = await userAgentPlatform()
     return `Mozilla/5.0 (${sys}; rv:${ver}) Gecko/20100101 Firefox/${ver}`
 }
 
@@ -258,25 +263,30 @@ const firefoxUseragent = () => {
  * Template a user agent with value with version and browser info.
  * @param {string} agent
  */
-const userAgentTemplated = agent => {
+export const userAgentTemplated = async agent => {
     if (!agent) {
         return ""
     }
-    const version = `${process.versions.chrome.split(".", 1)[0]}.0.0.0`
+    let fullversion = typeof process !== "undefined" && process?.versions.chrome
+    if (!fullversion) {
+        const conf = await appConfig()
+        fullversion = conf?.versions.chrome ?? ""
+    }
+    const version = `${fullversion.split(".", 1)[0]}.0.0.0`
     return agent
-        .replace(/%sys/g, userAgentPlatform())
+        .replace(/%sys/g, await userAgentPlatform())
         .replace(/%firefoxversion/g, firefoxVersion())
-        .replace(/%fullversion/g, process.versions.chrome)
+        .replace(/%fullversion/g, fullversion)
         .replace(/%version/g, version)
-        .replace(/%firefox/g, firefoxUseragent())
-        .replace(/%default/g, defaultUseragent())
+        .replace(/%firefox/g, await firefoxUseragent())
+        .replace(/%default/g, await defaultUseragent())
 }
 
 /**
  * Return the domain name for the provided url.
  * @param {string} url
  */
-const domainName = url => {
+export const domainName = url => {
     try {
         const {hostname} = new URL(url)
         if (hostname.endsWith("localhost") || /^(\d|\.)+$/.test(hostname)) {
@@ -293,7 +303,7 @@ const domainName = url => {
  * @param {string} url1
  * @param {string} url2
  */
-const sameDomain = (url1, url2) => {
+export const sameDomain = (url1, url2) => {
     const domain1 = domainName(url1)
     const domain2 = domainName(url2)
     return domain1 && domain2 && domain1 === domain2 && true || false
@@ -303,7 +313,7 @@ const sameDomain = (url1, url2) => {
  * Format a provided date, unix time or.
  * @param {string|number|Date|null|undefined} dateStringOrNumber
  */
-const formatDate = dateStringOrNumber => {
+export const formatDate = dateStringOrNumber => {
     let date = new Date(dateStringOrNumber ?? "")
     if (typeof dateStringOrNumber === "number") {
         date = new Date(dateStringOrNumber * 1000)
@@ -326,14 +336,14 @@ const storeFrameInfo = (element, location) => element
  * Find the frame info for a given element if available.
  * @param {Element|ShadowRoot|null} el
  */
-const findFrameInfo = el => el && framePaddingInfo.get(el)
+export const findFrameInfo = el => el && framePaddingInfo.get(el)
 
 /**
  * Get a CSS decleration property from an element as a number of pixels.
  * @param {Element|CSSStyleDeclaration} element
  * @param {string} prop
  */
-const propPixels = (element, prop) => {
+export const propPixels = (element, prop) => {
     let value = ""
     if (element instanceof CSSStyleDeclaration) {
         value = element.getPropertyValue(prop)
@@ -358,7 +368,7 @@ const propPixels = (element, prop) => {
  * Get the position of a given element based on bounding rect plus padding.
  * @param {Element} frame
  */
-const framePosition = frame => ({
+export const framePosition = frame => ({
     "x": frame.getBoundingClientRect().x + propPixels(frame, "padding-left")
         + propPixels(frame, "border-left-width"),
     "y": frame.getBoundingClientRect().y + propPixels(frame, "padding-top")
@@ -367,27 +377,28 @@ const framePosition = frame => ({
 
 /**
  * Check if anything inside a JSON structure is an object.
- * @param {import("./util").PartialJSON|undefined} o
- * @returns {o is import("./util").PartialJSONObject}
+ * @param {import("./util.js").PartialJSON|undefined} o
+ * @returns {o is import("./util.js").PartialJSONObject}
  */
-const isObject = o => o && typeof o === "object" && !Array.isArray(o) || false
+export const isObject = o => o && typeof o === "object"
+    && !Array.isArray(o) || false
 
 /** @typedef {string|{[property: string]: StringOrObject}} StringOrObject */
 
 /**
  * Check if an object only has string values, possibly nested in sub objects.
- * @param {import("./util").PartialJSON|undefined} item
+ * @param {import("./util.js").PartialJSON|undefined} item
  * @returns {item is {[property: string]: string}}
  */
-const isFlatStringObject = item => isObject(item)
+export const isFlatStringObject = item => isObject(item)
     && Object.values(item).every(v => typeof v === "string")
 
 /**
  * Check if an object only has string values, possibly nested in sub objects.
- * @param {import("./util").PartialJSON|undefined} item
+ * @param {import("./util.js").PartialJSON|undefined} item
  * @returns {item is StringOrObject}
  */
-const isNestedStringObject = item => {
+export const isNestedStringObject = item => {
     if (isObject(item)) {
         return Object.values(item).every(v => isNestedStringObject(v))
     }
@@ -399,7 +410,7 @@ const isNestedStringObject = item => {
  * @param {Node|EventTarget|null|undefined} el
  * @returns {el is Element}
  */
-const isElement = el => {
+export const isElement = el => {
     if (el instanceof EventTarget && !(el instanceof Element)) {
         return false
     }
@@ -414,7 +425,7 @@ const isElement = el => {
  * @param {Node|EventTarget|null|undefined} el
  * @returns {el is HTMLElement}
  */
-const isHTMLElement = el => {
+export const isHTMLElement = el => {
     if (el instanceof EventTarget && !(el instanceof HTMLElement)) {
         return false
     }
@@ -429,7 +440,7 @@ const isHTMLElement = el => {
  * @param {Node|EventTarget|null|undefined} el
  * @returns {el is HTMLIFrameElement}
  */
-const isHTMLIFrameElement = el => {
+export const isHTMLIFrameElement = el => {
     if (el instanceof EventTarget && !(el instanceof HTMLIFrameElement)) {
         return false
     }
@@ -444,7 +455,7 @@ const isHTMLIFrameElement = el => {
  * @param {Node|EventTarget|null|undefined} el
  * @returns {el is HTMLInputElement|HTMLTextAreaElement}
  */
-const isInputOrTextElement = el => {
+export const isInputOrTextElement = el => {
     if (el instanceof EventTarget && (
         !(el instanceof HTMLInputElement)
         && !(el instanceof HTMLTextAreaElement)
@@ -463,7 +474,7 @@ const isInputOrTextElement = el => {
  * @param {Node|EventTarget|null|undefined} el
  * @returns {el is HTMLAnchorElement}
  */
-const isHTMLAnchorElement = el => {
+export const isHTMLAnchorElement = el => {
     if (el instanceof EventTarget && !(el instanceof HTMLAnchorElement)) {
         return false
     }
@@ -478,7 +489,7 @@ const isHTMLAnchorElement = el => {
  * @param {Node|EventTarget|null|undefined} el
  * @returns {el is HTMLLinkElement}
  */
-const isHTMLLinkElement = el => {
+export const isHTMLLinkElement = el => {
     if (el instanceof EventTarget && !(el instanceof HTMLLinkElement)) {
         return false
     }
@@ -493,7 +504,7 @@ const isHTMLLinkElement = el => {
  * @param {Node|EventTarget|null|undefined} el
  * @returns {el is HTMLImageElement}
  */
-const isHTMLImageElement = el => {
+export const isHTMLImageElement = el => {
     if (el instanceof EventTarget && !(el instanceof HTMLImageElement)) {
         return false
     }
@@ -508,7 +519,7 @@ const isHTMLImageElement = el => {
  * @param {Node|EventTarget|null|undefined} el
  * @returns {el is SVGElement}
  */
-const isSVGElement = el => {
+export const isSVGElement = el => {
     if (el instanceof EventTarget && !(el instanceof SVGElement)) {
         return false
     }
@@ -523,7 +534,7 @@ const isSVGElement = el => {
  * @param {Node|EventTarget|null|undefined} el
  * @returns {el is HTMLVideoElement}
  */
-const isHTMLVideoElement = el => {
+export const isHTMLVideoElement = el => {
     if (el instanceof EventTarget && !(el instanceof HTMLVideoElement)) {
         return false
     }
@@ -538,7 +549,7 @@ const isHTMLVideoElement = el => {
  * @param {Node|EventTarget|null|undefined} el
  * @returns {el is HTMLAudioElement}
  */
-const isHTMLAudioElement = el => {
+export const isHTMLAudioElement = el => {
     if (el instanceof EventTarget && !(el instanceof HTMLAudioElement)) {
         return false
     }
@@ -553,7 +564,7 @@ const isHTMLAudioElement = el => {
  * @param {Element|null|undefined} el
  * @param {string} query
  */
-const matchesQuery = (el, query) => {
+export const matchesQuery = (el, query) => {
     try {
         return el?.matches(query) ?? false
     } catch {
@@ -572,7 +583,9 @@ const matchesQuery = (el, query) => {
  * @param {number} py
  * @returns {Element|null}
  */
-const findElementAtPosition = (x, y, levels = [document], px = 0, py = 0) => {
+export const findElementAtPosition = (
+    x, y, levels = [document], px = 0, py = 0
+) => {
     // Find out which element is located at a given position.
     // Will look inside subframes recursively at the corrected position.
     const elAtPos = levels?.[0]?.elementFromPoint(x - px, y - py)
@@ -599,7 +612,9 @@ const findElementAtPosition = (x, y, levels = [document], px = 0, py = 0) => {
  * @param {number} paddedX
  * @param {number} paddedY
  */
-const querySelectorAll = (sel, base = document, paddedX = 0, paddedY = 0) => {
+export const querySelectorAll = (
+    sel, base = document, paddedX = 0, paddedY = 0
+) => {
     if (!base) {
         return []
     }
@@ -680,7 +695,7 @@ const correctedCenterAndSizeOfRect = rect => {
  * @param {Element} element
  * @param {DOMRectJSON[]} rects
  */
-const findClickPosition = (element, rects) => {
+export const findClickPosition = (element, rects) => {
     let dims = {"height": 0, "width": 0, "x": 0, "y": 0}
     let clickable = false
     for (const rect of rects) {
@@ -713,7 +728,7 @@ const findClickPosition = (element, rects) => {
 }
 
 /** Find the current active element, also inside shadow dom or subframes. */
-const activeElement = () => {
+export const activeElement = () => {
     if (document.activeElement?.shadowRoot) {
         let el = document.activeElement
         while (el?.shadowRoot?.activeElement) {
@@ -752,7 +767,7 @@ const activeElement = () => {
  * Format any number of bytes to a value with a nice unit.
  * @param {number} size
  */
-const formatSize = size => {
+export const formatSize = size => {
     const exp = Math.min(Math.floor(Math.log(size) / Math.log(1024)), 10)
     const unit = (size / 1024 ** exp || 0).toFixed(2).replace(/\.?0+$/g, "")
     return `${unit} ${" KMGTPEZYRQ"[exp]?.trim() ?? ""}B`
@@ -763,7 +778,7 @@ const formatSize = size => {
  * @param {string} v1Str
  * @param {string} v2Str
  */
-const compareVersions = (v1Str, v2Str) => {
+export const compareVersions = (v1Str, v2Str) => {
     const v1 = v1Str.replace(/^v/g, "").trim()
     const v2 = v2Str.replace(/^v/g, "").trim()
     if (v1 === v2) {
@@ -809,12 +824,14 @@ const compareVersions = (v1Str, v2Str) => {
  * @param {import("https").RequestOptions} opts
  * @param {string|null} body
  */
-const fetchUrl = (url, opts = {}, body = null) => new Promise((res, rej) => {
+export const fetchUrl = (
+    url, opts = {}, body = null
+) => new Promise(async(res, rej) => {
     let requestModule = null
     if (url.startsWith("https://")) {
-        requestModule = require("node:https")
+        requestModule = await import("node:https")
     } else if (url.startsWith("http://")) {
-        requestModule = require("node:http")
+        requestModule = await import("node:http")
     } else {
         rej(new Error("invalid protocol"))
         return
@@ -845,7 +862,9 @@ const fetchUrl = (url, opts = {}, body = null) => new Promise((res, rej) => {
  * @param {import("https").RequestOptions} opts
  * @param {string|null} body
  */
-const fetchJSON = (url, opts = {}, body = null) => new Promise((res, rej) => {
+export const fetchJSON = (
+    url, opts = {}, body = null
+) => new Promise((res, rej) => {
     fetchUrl(url, opts, body).then(data => {
         try {
             res(JSON.parse(data))
@@ -859,37 +878,27 @@ const fetchJSON = (url, opts = {}, body = null) => new Promise((res, rej) => {
  * Return the last part of the path, usually the filename.
  * @param {string} loc
  */
-const basePath = loc => {
-    const {basename} = require("node:path")
-    return basename(loc)
-}
+export const basePath = loc => path.basename(loc)
 
 /**
  * Return the directory name of the path.
  * @param {string} loc
  */
-const dirname = loc => {
-    const path = require("node:path")
-    return path.dirname(loc)
-}
+export const dirname = loc => path.dirname(loc)
 
 /**
  * Check if a path is absolute or not.
  * @param {string} loc
  */
-const isAbsolutePath = loc => {
-    const {isAbsolute} = require("node:path")
-    return isAbsolute(loc)
-}
+export const isAbsolutePath = loc => path.isAbsolute(loc)
 
 /**
  * Check if a path is a directory.
  * @param {string} loc
  */
-const isDir = loc => {
+export const isDir = loc => {
     try {
-        const {statSync} = require("node:fs")
-        return statSync(loc).isDirectory()
+        return fs.statSync(loc).isDirectory()
     } catch {
         return false
     }
@@ -899,10 +908,9 @@ const isDir = loc => {
  * Check if a path is a file.
  * @param {string} loc
  */
-const isFile = loc => {
+export const isFile = loc => {
     try {
-        const {statSync} = require("node:fs")
-        return statSync(loc).isFile()
+        return fs.statSync(loc).isFile()
     } catch {
         return false
     }
@@ -913,9 +921,8 @@ const isFile = loc => {
  * @param {string} loc
  * @returns {Promise<string|null>}
  */
-const readFile = loc => new Promise(res => {
-    const {"readFile": readFileFS} = require("node:fs")
-    readFileFS(loc, (err, data) => {
+export const readFile = loc => new Promise(res => {
+    fs.readFile(loc, (err, data) => {
         if (err) {
             res(null)
             return
@@ -925,28 +932,13 @@ const readFile = loc => new Promise(res => {
 })
 
 /**
- * Read the file contents of a file as a string.
- * @param {string} loc
- * @returns {string|null}
- */
-const readFileSync = loc => {
-    try {
-        const {"readFileSync": readFileSyncFS} = require("node:fs")
-        return readFileSyncFS(loc).toString()
-    } catch {
-        return null
-    }
-}
-
-/**
  * Write data to a file.
  * @param {string} loc
  * @param {string|Buffer} data
  * @returns {Promise<boolean>} True if successful.
  */
-const writeFile = (loc, data) => new Promise(res => {
-    const {"writeFile": write} = require("node:fs")
-    write(loc, data, err => {
+export const writeFile = (loc, data) => new Promise(res => {
+    fs.writeFile(loc, data, err => {
         if (err) {
             res(false)
             return
@@ -954,22 +946,6 @@ const writeFile = (loc, data) => new Promise(res => {
         res(true)
     })
 })
-
-/**
- * Write data to a file, returns success state.
- * @param {string} loc
- * @param {string|Buffer} data
- */
-const writeFileSync = (loc, data) => {
-    try {
-        const {"writeFileSync": writeFileSyncFS} = require("node:fs")
-        writeFileSyncFS(loc, data)
-        return true
-    } catch {
-        // Usually permission errors, return value will be false
-    }
-    return false
-}
 
 /**
  * Append data to a file.
@@ -977,9 +953,8 @@ const writeFileSync = (loc, data) => {
  * @param {string|Buffer} data
  * @returns {Promise<boolean>} True if successful.
  */
-const appendFile = (loc, data) => new Promise(res => {
-    const {"appendFile": appendFileFS} = require("node:fs")
-    appendFileFS(loc, data, err => {
+export const appendFile = (loc, data) => new Promise(res => {
+    fs.appendFile(loc, data, err => {
         if (err) {
             res(false)
             return
@@ -987,26 +962,6 @@ const appendFile = (loc, data) => new Promise(res => {
         res(true)
     })
 })
-
-/**
- * Write JSON data to a file, optionally with indentation and replacer.
- * @param {string} loc
- * @param {unknown} data
- * @param {{
- *   replacer?: undefined|((this: unknown, key: string, val: string) => string),
- *   indent?: number|undefined
- * }} opts
- */
-const writeJSONSync = (loc, data, opts = {}) => {
-    try {
-        const {"writeFileSync": writeFileSyncFS} = require("node:fs")
-        writeFileSyncFS(loc, JSON.stringify(data, opts.replacer, opts.indent))
-        return true
-    } catch {
-        // Usually permission errors, return value will be false
-    }
-    return false
-}
 
 /**
  * Write JSON data async to a file, optionally with indentation and replacer.
@@ -1018,9 +973,8 @@ const writeJSONSync = (loc, data, opts = {}) => {
  * }} opts
  * @returns {Promise<boolean>} True if successful.
  */
-const writeJSON = (loc, data, opts = {}) => new Promise(res => {
-    const {"writeFile": write} = require("node:fs")
-    write(loc, JSON.stringify(data, opts.replacer, opts.indent), err => {
+export const writeJSON = (loc, data, opts = {}) => new Promise(res => {
+    fs.writeFile(loc, JSON.stringify(data, opts.replacer, opts.indent), err => {
         if (err) {
             res(false)
             return
@@ -1033,10 +987,9 @@ const writeJSON = (loc, data, opts = {}) => new Promise(res => {
  * Delete a file at a location, returns success state.
  * @param {string} loc
  */
-const deleteFile = loc => {
+export const deleteFile = loc => {
     try {
-        const {unlinkSync} = require("node:fs")
-        unlinkSync(loc)
+        fs.unlinkSync(loc)
         return true
     } catch {
         // Usually permission errors, return value will be false
@@ -1048,10 +1001,9 @@ const deleteFile = loc => {
  * Make a directory at a location, returns success state.
  * @param {string} loc
  */
-const makeDir = loc => {
+export const makeDir = loc => {
     try {
-        const {mkdirSync} = require("node:fs")
-        mkdirSync(loc, {"recursive": true})
+        fs.mkdirSync(loc, {"recursive": true})
         return true
     } catch {
         // Usually permission errors, return value will be false
@@ -1065,10 +1017,9 @@ const makeDir = loc => {
  * @param {boolean} absolute
  * @param {boolean} dirsOnly
  */
-const listDirSync = (loc, absolute = false, dirsOnly = false) => {
+export const listDirSync = (loc, absolute = false, dirsOnly = false) => {
     try {
-        const {readdirSync} = require("node:fs")
-        let files = readdirSync(loc)
+        let files = fs.readdirSync(loc)
         if (dirsOnly) {
             files = files.filter(f => isDir(joinPath(loc, f)))
         }
@@ -1088,11 +1039,10 @@ const listDirSync = (loc, absolute = false, dirsOnly = false) => {
  * @param {boolean} dirsOnly
  * @returns {Promise<string[]>}
  */
-const listDir = (
+export const listDir = (
     loc, absolute = false, dirsOnly = false
 ) => new Promise(res => {
-    const {readdir} = require("node:fs")
-    readdir(loc, (err, files) => {
+    fs.readdir(loc, (err, files) => {
         if (err) {
             res([])
             return
@@ -1113,19 +1063,16 @@ const listDir = (
  * @param {string} file
  * @param {(info: import("fs").Stats, oldInfo: import("fs").Stats) => void} call
  */
-const watchFile = (file, call) => {
-    const {"watchFile": watchFileFS} = require("node:fs")
-    return watchFileFS(file, {"interval": 500}, call)
-}
+export const watchFile = (file, call) => fs.watchFile(
+    file, {"interval": 500}, call)
 
 /**
  * Get the modified date for a file location.
  * @param {string} loc
  */
-const modifiedAt = loc => {
+export const modifiedAt = loc => {
     try {
-        const {statSync} = require("node:fs")
-        return statSync(loc).mtime
+        return fs.statSync(loc).mtime
     } catch {
         return new Date("1970-01-01")
     }
@@ -1135,8 +1082,7 @@ const modifiedAt = loc => {
  * Remove a location using "rm -rf" rimraf module.
  * @param {string} f
  */
-const rm = f => {
-    const rimraf = require("./rimraf")
+export const rm = f => {
     try {
         rimraf(f)
     } catch {
@@ -1158,7 +1104,9 @@ const isSpecialPage = page => specialPages.has(page)
  * @param {string|null} section
  * @param {boolean} skipExistCheck
  */
-const specialPagePath = (userPage, section = null, skipExistCheck = false) => {
+export const specialPagePath = (
+    userPage, section = null, skipExistCheck = false
+) => {
     let page = userPage
     if (!isSpecialPage(userPage) && !skipExistCheck) {
         page = "help"
@@ -1179,8 +1127,7 @@ const specialPagePath = (userPage, section = null, skipExistCheck = false) => {
  * @param {string} urlPath
  * @returns {{name: SpecialPage, section: string}|null}
  */
-const pathToSpecialPageName = urlPath => {
-    const {normalize} = require("node:path/posix")
+export const pathToSpecialPageName = urlPath => {
     if (urlPath?.startsWith?.("vieb://")) {
         const parts = urlPath.replace("vieb://", "").split("#")
         const [partName] = parts
@@ -1239,7 +1186,7 @@ const pathToSpecialPageName = urlPath => {
  * Translate a valid url to the explore mode input representation.
  * @param {string} url
  */
-const urlToString = async url => {
+export const urlToString = async url => {
     const special = pathToSpecialPageName(url)
     if (special?.name) {
         const config = await appConfig()
@@ -1252,7 +1199,7 @@ const urlToString = async url => {
     try {
         const decoded = decodeURI(url)
         let fileName = decoded.replace(/^file:\/+/, "/")
-        if (process.platform === "win32") {
+        if (platform() === "win32") {
             fileName = decoded.replace(/^file:\/+/, "")
         }
         fileName = fileName.replace(/%23/g, "#").replace(/%3F/g, "?")
@@ -1264,73 +1211,4 @@ const urlToString = async url => {
         // Invalid url
     }
     return url
-}
-
-module.exports = {
-    activeElement,
-    appConfig,
-    appData,
-    appendFile,
-    basePath,
-    compareVersions,
-    defaultUseragent,
-    deleteFile,
-    dirname,
-    domainName,
-    expandPath,
-    fetchJSON,
-    fetchUrl,
-    findClickPosition,
-    findElementAtPosition,
-    findFrameInfo,
-    firefoxUseragent,
-    firefoxVersion,
-    formatDate,
-    formatSize,
-    framePosition,
-    getAppRootDir,
-    isAbsolutePath,
-    isDir,
-    isElement,
-    isFile,
-    isFlatStringObject,
-    isHTMLAnchorElement,
-    isHTMLAudioElement,
-    isHTMLElement,
-    isHTMLIFrameElement,
-    isHTMLImageElement,
-    isHTMLLinkElement,
-    isHTMLVideoElement,
-    isInputOrTextElement,
-    isNestedStringObject,
-    isObject,
-    isSVGElement,
-    joinPath,
-    listDir,
-    listDirSync,
-    makeDir,
-    matchesQuery,
-    modifiedAt,
-    pathExists,
-    pathToSpecialPageName,
-    propPixels,
-    querySelectorAll,
-    readFile,
-    readFileSync,
-    readJSON,
-    readJSONSync,
-    rm,
-    sameDomain,
-    specialChars,
-    specialCharsAllowSpaces,
-    specialPagePath,
-    urlToString,
-    userAgentPlatform,
-    userAgentResolvedSystem,
-    userAgentTemplated,
-    watchFile,
-    writeFile,
-    writeFileSync,
-    writeJSON,
-    writeJSONSync
 }

@@ -1,20 +1,36 @@
-"use strict"
+/*
+* Vieb - Vim Inspired Electron Browser
+* Copyright (C) 2023-2026 Jelmer van Arnhem
+*
+* This program is free software: you can redistribute it and/or modify
+* it under the terms of the GNU General Public License as published by
+* the Free Software Foundation, either version 3 of the License, or
+* (at your option) any later version.
+*
+* This program is distributed in the hope that it will be useful,
+* but WITHOUT ANY WARRANTY; without even the implied warranty of
+* MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+* GNU General Public License for more details.
+*
+* You should have received a copy of the GNU General Public License
+* along with this program.  If not, see <https://www.gnu.org/licenses/>.
+*/
 
-const {
+import {
     getAppRootDir,
     isFile,
     isNestedStringObject,
     joinPath,
     listDirSync,
     readJSONSync
-} = require("./util")
+} from "./util.js"
 
-/** @type {import("./util").StringOrObject} */
+/** @type {import("./util.js").StringOrObject} */
 const translations = {}
 let selectedLang = "en"
 
 /** Returns a list of languages according to the language files present. */
-const validLanguages = () => {
+export const validLanguages = () => {
     const files = listDirSync(joinPath(getAppRootDir(), "translations"))
     return files.filter(f => f.endsWith(".json"))
         .map(f => f.replace(/\.json$/, ""))
@@ -24,7 +40,7 @@ const validLanguages = () => {
  * Update the lang used for translations via func so translate func is faster.
  * @param {string} lang
  */
-const updateLang = lang => {
+export const updateLang = lang => {
     selectedLang = lang
 }
 
@@ -52,12 +68,12 @@ const loadLang = lang => {
 
 /**
  * Translate a field.
- * @param {import("../types/i18n").TranslationKeys} id
+ * @param {import("../types/i18n.d.ts").TranslationKeys} id
  * @param {{fields?: string[], customLang?: null|string}} opts
  * @returns {string}
  * @throws {Error} When the English language file is not valid.
  */
-const translate = (id, {customLang = null, fields = []} = {}) => {
+export const translate = (id, {customLang = null, fields = []} = {}) => {
     if (!translations.en) {
         const filePath = joinPath(getAppRootDir(), "translations/en.json")
         const tr = readJSONSync(filePath) ?? {}
@@ -99,7 +115,7 @@ const translate = (id, {customLang = null, fields = []} = {}) => {
  * @param {"or"|"and"|"none"} linkWord
  * @param {"single"|"double"|"none"} quotes
  */
-const argsAsHumanList = (args, linkWord = "or", quotes = "single") => {
+export const argsAsHumanList = (args, linkWord = "or", quotes = "single") => {
     let readable = ""
     let quotestart = ""
     let quoteend = ""
@@ -114,11 +130,4 @@ const argsAsHumanList = (args, linkWord = "or", quotes = "single") => {
     readable += `${translate(`util.${linkWord}`)}${
         quotestart}${args.at(-1)}${quoteend}`
     return readable.replace(commaspaced, "")
-}
-
-module.exports = {
-    argsAsHumanList,
-    translate,
-    updateLang,
-    validLanguages
 }

@@ -23,6 +23,7 @@ The releases of Vieb aim to follow [semantic versioning](https://semver.org).
 
 ### Changed
 
+- Entire codebase to now use ESM
 - Default value for "keeprecentlyclosed" to "always"
 - Default value for "keeprecentlyclosedhistory" to "always"
 - Default value for "nativetheme" to "system"

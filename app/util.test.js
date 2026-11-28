@@ -20,46 +20,46 @@
  unicorn/no-global-object-property-assignment,
  unicorn/consistent-class-member-order
 */
-"use strict"
 
-const assert = require("node:assert")
-const path = require("node:path")
-const {describe, test} = require("node:test")
-const UTIL = require("./util")
-
-describe("Special pages", () => {
+const assert = await import("node:assert")
+const path = await import("node:path")
+const {describe, test} = await import("node:test")
+const UTIL = await import("./util.js")
+await describe("Special pages", async() => {
     const specialPagesToFilenames = [
         {
             "arguments": ["help"],
             "reason": "Expect basic conversion to work",
-            "response": `file://${path.resolve(`${__dirname}/pages/help.html`)}`
+            "response": `file://${path.resolve(`${
+                import.meta.dirname}/pages/help.html`)}`
         },
         {
             "arguments": ["test", null, false],
             "reason": "Expect to give help page",
-            "response": `file://${path.resolve(`${__dirname}/pages/help.html`)}`
+            "response": `file://${path.resolve(`${
+                import.meta.dirname}/pages/help.html`)}`
         },
         {
             "arguments": ["downloads", "#list"],
             "reason": "Don't prepend hashes if already provided",
             "response": `file://${path.resolve(
-                `${__dirname}/pages/downloads.html#list`)}`
+                `${import.meta.dirname}/pages/downloads.html#list`)}`
         },
         {
             "arguments": ["nonexistent", "test", true],
             "reason": "Skip page existence checks if requested",
             "response": `file://${path.resolve(
-                `${__dirname}/pages/nonexistent.html#test`)}`
+                `${import.meta.dirname}/pages/nonexistent.html#test`)}`
         },
         {
             "arguments": ["help", "test"],
             "reason": "Expect basic conversion to work",
             "response": `file://${path.resolve(
-                `${__dirname}/pages/help.html#test`)}`
+                `${import.meta.dirname}/pages/help.html#test`)}`
         }
     ]
     for (const specialPageTest of specialPagesToFilenames) {
-        test(`Testing "${specialPageTest.arguments}":
+        await test(`Testing "${specialPageTest.arguments}":
     ${specialPageTest.reason}`, () => {
             assert.strictEqual(
                 UTIL.specialPagePath(...specialPageTest.arguments),
@@ -67,8 +67,7 @@ describe("Special pages", () => {
         })
     }
 })
-
-describe("Versions", () => {
+await describe("Versions", async() => {
     const versions = [
         {
             "new": "1.0.0",
@@ -161,13 +160,12 @@ describe("Versions", () => {
         }
     ]
     for (const v of versions) {
-        test(`Testing '${v.ref}' vs '${v.new}': ${v.reason}`, () => {
+        await test(`Testing '${v.ref}' vs '${v.new}': ${v.reason}`, () => {
             assert.strictEqual(UTIL.compareVersions(v.new, v.ref), v.result)
         })
     }
 })
-
-describe("Format sizes work correctly", () => {
+await describe("Format sizes work correctly", async() => {
     const sizes = [
         {"number": 0, "output": "0 B"},
         {"number": 45, "output": "45 B"},
@@ -183,16 +181,15 @@ describe("Format sizes work correctly", () => {
         {"number": 1.1111111111111111e+35, "output": "87651.21 QB"}
     ]
     for (const s of sizes) {
-        test(`Testing that ${s.number} becomes ${s.output}`, () => {
+        await test(`Testing that ${s.number} becomes ${s.output}`, () => {
             assert.strictEqual(UTIL.formatSize(s.number), s.output)
         })
     }
 })
-
-test("Filesystem helpers should work as expected", async() => {
-    const {rmdirSync} = require("node:fs")
-    const {tmpdir} = require("node:os")
-    const {basename, dirname, isAbsolute} = require("node:path")
+await test("Filesystem helpers should work as expected", async() => {
+    const {rmdirSync} = await import("node:fs")
+    const {tmpdir} = await import("node:os")
+    const {basename, dirname, isAbsolute} = await import("node:path")
     const file = UTIL.joinPath(tmpdir(), "vieb-test")
     // Clean old test files
     UTIL.deleteFile(file)
@@ -248,19 +245,20 @@ test("Filesystem helpers should work as expected", async() => {
     assert.strictEqual(UTIL.isDir(file), false)
     assert.strictEqual(UTIL.pathExists(file), false)
     let fileList = await UTIL.listDir(
-        UTIL.joinPath(__dirname, "img"), false, true)
+        UTIL.joinPath(import.meta.dirname, "img"), false, true)
     assert.strictEqual(fileList.length, 1)
     assert.strictEqual(fileList[0], "icons")
-    fileList = await UTIL.listDir(UTIL.joinPath(__dirname, "img"), true, true)
+    fileList = await UTIL.listDir(UTIL.joinPath(
+        import.meta.dirname, "img"), true, true)
     assert.strictEqual(fileList.length, 1)
-    assert.strictEqual(fileList[0], UTIL.joinPath(__dirname, "img", "icons"))
+    assert.strictEqual(fileList[0], UTIL.joinPath(
+        import.meta.dirname, "img", "icons"))
     assert.strictEqual(UTIL.dirname("/home/test/"), dirname("/home/test/"))
     assert.strictEqual(UTIL.basePath("/home/test/"), basename("/home/test/"))
     assert.strictEqual(
         UTIL.isAbsolutePath("/home/test/"), isAbsolute("/home/test/"))
 })
-
-test("formatDate helper to show dates in proper standard format", () => {
+await test("formatDate helper to show dates in proper standard format", () => {
     process.env.TZ = "UTC"
     assert.strictEqual(new Date().getTimezoneOffset(), 0)
     assert.strictEqual(UTIL.formatDate("03-03-2021"), "2021-03-03 00:00:00")
@@ -271,8 +269,7 @@ test("formatDate helper to show dates in proper standard format", () => {
     assert.strictEqual(
         UTIL.formatDate(new Date("2021-04-04")), "2021-04-04 00:00:00")
 })
-
-test("sameDomain function should match urls that have the same domain", () => {
+await test("sameDomain function should match urls that match domains", () => {
     // Basics
     assert.strictEqual(UTIL.sameDomain(
         "https://duckduckgo.com", "https://google.com/"), false)
@@ -298,8 +295,7 @@ test("sameDomain function should match urls that have the same domain", () => {
     assert.strictEqual(UTIL.sameDomain(
         "https://127.0.0.1/", "http://10.0.0.1"), false)
 })
-
-test(`Firefox version should increment by date`, async() => {
+await test(`Firefox version should increment by date`, async() => {
     const firstMockDate = new Date("2023-06-05")
     const secondMockDate = new Date("2023-06-06")
     const thirdMockDate = new Date("2023-07-04")

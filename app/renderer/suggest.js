@@ -15,9 +15,9 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
-const {
+import {platform} from "node:os"
+import {
     appData,
     basePath,
     dirname,
@@ -30,9 +30,9 @@ const {
     pathExists,
     readFile,
     urlToString
-} = require("../util")
-const {getSetting} = require("./settings")
-const {
+} from "../util.js"
+import {getSetting} from "./settings.js"
+import {
     currentMode,
     currentPage,
     downloadPath,
@@ -43,7 +43,7 @@ const {
     searchword,
     stringToUrl,
     updateScreenshotHighlight
-} = require("./util")
+} from "./util.js"
 
 /** @type {string[]} */
 let suggestions = []
@@ -69,7 +69,7 @@ const updateColors = async(searchStr = null) => {
         } else if (isAbsolutePath(local) && pathExists(local)) {
             urlElement.className = "file"
         } else {
-            const match = searchword(search.trim())
+            const match = await searchword(search.trim())
             if (match.word) {
                 urlElement.className = "searchwords"
             } else {
@@ -108,7 +108,7 @@ const topOfSection = () => {
 }
 
 /** Select the previous suggestion from the list. */
-const previous = async() => {
+export const previous = async() => {
     const list = [...document.querySelectorAll("#suggest-dropdown div")]
     if (list.length === 0) {
         return
@@ -138,7 +138,7 @@ const previous = async() => {
 }
 
 /** Go the previous section in the suggestion list. */
-const previousSection = async() => {
+export const previousSection = async() => {
     await previous()
     while (!topOfSection()) {
         await previous()
@@ -146,7 +146,7 @@ const previousSection = async() => {
 }
 
 /** Select the next suggestion from the list. */
-const next = async() => {
+export const next = async() => {
     const list = [...document.querySelectorAll("#suggest-dropdown div")]
     if (list.length === 0) {
         return
@@ -176,7 +176,7 @@ const next = async() => {
 }
 
 /** Go the next section in the suggestion list. */
-const nextSection = async() => {
+export const nextSection = async() => {
     await next()
     while (!topOfSection()) {
         await next()
@@ -184,7 +184,7 @@ const nextSection = async() => {
 }
 
 /** Remove all suggestions and empty the list. */
-const emptySuggestions = () => {
+export const emptySuggestions = () => {
     const suggestDropdown = document.getElementById("suggest-dropdown")
     const url = getUrl()
     if (suggestDropdown && url) {
@@ -199,11 +199,11 @@ const emptySuggestions = () => {
  * Translate a location to an informative object that can be suggested.
  * @param {string} base
  * @param {string} loc
- * @returns {{path: string, title: string, type: "file", url: string}}
+ * @returns {Promise<{path: string, title: string, type: "file", url: string}>}
  */
-const locationToSuggestion = (base, loc) => {
+const locationToSuggestion = async(base, loc) => {
     let absPath = joinPath(base, loc)
-    let fullPath = stringToUrl(absPath)
+    let fullPath = await stringToUrl(absPath)
     let location = loc
     if (isDir(absPath)) {
         fullPath += "/"
@@ -222,7 +222,7 @@ const locationToSuggestion = (base, loc) => {
  */
 const suggestFiles = async loc => {
     let location = expandPath(loc.replace(/^file:\/+/g, "/"))
-    if (process.platform === "win32") {
+    if (platform() === "win32") {
         location = expandPath(loc.replace(/^file:\/+/g, ""))
     }
     if (isAbsolutePath(location)) {
@@ -234,8 +234,8 @@ const suggestFiles = async loc => {
         let matching = []
         if (dirname(location) !== location) {
             const dirfiles = await listDir(dirname(location))
-            matching = dirfiles.map(
-                p => locationToSuggestion(dirname(location), p))
+            matching = await Promise.all(dirfiles.map(
+                async p => await locationToSuggestion(dirname(location), p)))
             matching = matching.filter(p => {
                 if (!basePath(p.url).startsWith(basePath(location))) {
                     return false
@@ -244,7 +244,8 @@ const suggestFiles = async loc => {
             })
         }
         const indirfiles = await listDir(location)
-        const inDir = indirfiles.map(p => locationToSuggestion(location, p))
+        const inDir = await Promise.all(indirfiles.map(
+            async p => await locationToSuggestion(location, p)))
         return [...matching, ...inDir]
     }
     return []
@@ -254,7 +255,7 @@ const suggestFiles = async loc => {
  * Add a suggestion to the explore mode suggestions.
  * @param {{title: string, type?: string, url: string, icon?: string}} explore
  */
-const addExplore = async explore => {
+export const addExplore = async explore => {
     if (suggestions.includes(explore.url)) {
         return
     }
@@ -263,24 +264,25 @@ const addExplore = async explore => {
     element.className = "no-focus-reset"
     element.addEventListener("mouseup", async e => {
         e.preventDefault()
-        const {getMouseConf} = require("./settings")
+        const {getMouseConf} = await import("./settings.js")
         if (e.button === 2) {
             if (getMouseConf("suggestselect") && ["both", "explore"]
                 .includes(getSetting("menusuggest"))) {
-                const {linkMenu} = require("./contextmenu")
-                linkMenu("user", {"link": explore.url, "x": e.x, "y": e.y})
+                const {linkMenu} = await import("./contextmenu.js")
+                await linkMenu("user",
+                    {"link": explore.url, "x": e.x, "y": e.y})
             }
         } else if (getMouseConf("menusuggest")) {
-            const {setMode} = require("./modes")
+            const {setMode} = await import("./modes.js")
             await setMode("normal")
-            const {clear} = require("./contextmenu")
+            const {clear} = await import("./contextmenu.js")
             clear()
             if (e.button === 0) {
-                const {navigateTo} = require("./tabs")
+                const {navigateTo} = await import("./tabs.js")
                 await navigateTo("user", explore.url)
             }
             if (e.button === 1) {
-                const {addTab} = require("./tabs")
+                const {addTab} = await import("./tabs.js")
                 await addTab({"src": "user", "url": explore.url})
             }
         }
@@ -288,7 +290,7 @@ const addExplore = async explore => {
     if (explore.icon && getSetting("favicons") !== "disabled") {
         const thumbnail = document.createElement("img")
         thumbnail.className = "icon"
-        const {forSite} = require("./favicons")
+        const {forSite} = await import("./favicons.js")
         thumbnail.src = forSite(explore.icon) || "img/empty.png"
         element.append(thumbnail)
     }
@@ -316,13 +318,13 @@ const addExplore = async explore => {
  * Suggest urls, files and searchwords based on the current input and settings.
  * @param {string} search
  */
-const suggestExplore = async search => {
+export const suggestExplore = async search => {
     emptySuggestions()
     await updateColors(search)
     if (!search.trim()) {
         return
     }
-    const {suggestHist} = require("./history")
+    const {suggestHist} = await import("./history.js")
     const suggestorder = getSetting("suggestorder")
     for (const suggest of suggestorder.filter(Boolean)) {
         const args = suggest.split("~")
@@ -354,14 +356,15 @@ const suggestExplore = async search => {
                 order = "alpha"
             }
             const searchwords = getSetting("searchwords")
-            const words = Object.entries(searchwords).map(([title, url]) => {
-                const match = searchword(search)
-                let filledUrl = match.url
-                if (filledUrl === search) {
-                    filledUrl = url
-                }
-                return {title, "type": "searchword", "url": filledUrl}
-            })
+            const words = await Promise.all(Object.entries(searchwords)
+                .map(async([title, url]) => {
+                    const match = await searchword(search)
+                    let filledUrl = match.url
+                    if (filledUrl === search) {
+                        filledUrl = url
+                    }
+                    return {title, "type": "searchword", "url": filledUrl}
+                }))
             if (order === "alpha") {
                 words.sort((a, b) => a.title.localeCompare(b.title))
             }
@@ -396,26 +399,26 @@ const addCommand = async(
     element.className = "no-focus-reset"
     element.addEventListener("mouseup", async e => {
         e.preventDefault()
-        const {getMouseConf} = require("./settings")
+        const {getMouseConf} = await import("./settings.js")
         if (e.button === 2) {
             if (getMouseConf("suggestselect") && ["both", "command"]
                 .includes(getSetting("menusuggest"))) {
-                const {commandMenu} = require("./contextmenu")
+                const {commandMenu} = await import("./contextmenu.js")
                 commandMenu("user", {command, "x": e.x, "y": e.y})
             }
         } else if (getMouseConf("menusuggest")) {
-            const {setMode} = require("./modes")
+            const {setMode} = await import("./modes.js")
             await setMode("normal")
-            const {execute} = require("./command")
+            const {execute} = await import("./command.js")
             await execute(command, {"src": "user"})
-            const {clear} = require("./contextmenu")
+            const {clear} = await import("./contextmenu.js")
             clear()
         }
     })
     if (icon && getSetting("favicons") !== "disabled") {
         const thumbnail = document.createElement("img")
         thumbnail.className = "icon"
-        const {forSite} = require("./favicons")
+        const {forSite} = await import("./favicons.js")
         thumbnail.src = forSite(icon) || "img/empty.png"
         element.append(thumbnail)
     }
@@ -445,12 +448,12 @@ const addCommand = async(
  * Suggest a command based on the current input text.
  * @param {string} searchStr
  */
-const suggestCommand = async searchStr => {
+export const suggestCommand = async searchStr => {
     emptySuggestions()
     // Remove all redundant spaces
     // Allow commands prefixed with :
     const search = searchStr.replace(/^[\s:|]*/, "").replace(/ +/g, " ")
-    const {parseAndValidateArgs} = require("./command")
+    const {parseAndValidateArgs} = await import("./command.js")
     const {
         args, command, confirm, range, valid
     } = parseAndValidateArgs(search)
@@ -473,11 +476,11 @@ const suggestCommand = async searchStr => {
     // List all commands unconditionally
     const {
         commandList, customCommandsAsCommandList, rangeToTabIdxs
-    } = require("./command")
+    } = await import("./command.js")
     for (const cmd of commandList().filter(c => c.startsWith(search))) {
         await addCommand(cmd)
     }
-    const {validOptions} = require("./settings")
+    const {validOptions} = await import("./settings.js")
     // Command: screenshot and screencopy
     if (command.startsWith("screen")
         && !range && !confirm && args.length < 3) {
@@ -564,7 +567,7 @@ const suggestCommand = async searchStr => {
     }
     updateScreenshotHighlight()
     // Command: set
-    const {settingsWithDefaults, suggestionList} = require("./settings")
+    const {settingsWithDefaults, suggestionList} = await import("./settings.js")
     if ("set".startsWith(command) && !confirm && !range) {
         if (args.length > 0) {
             for (const c of suggestionList().filter(
@@ -758,7 +761,7 @@ const suggestCommand = async searchStr => {
     if ("help".startsWith(command) && !range) {
         const {
             listMappingsAsCommandList, listSupportedActions
-        } = require("./input")
+        } = await import("./input.js")
         const mapCommandString = await listMappingsAsCommandList(
             "user", null, true)
         const sections = [
@@ -911,7 +914,7 @@ const suggestCommand = async searchStr => {
             await addCommand(`${bufferCommand}${confirmChar} false`)
             continue
         }
-        const {allTabsForBufferArg} = require("./command")
+        const {allTabsForBufferArg} = await import("./command.js")
         const tabs = listTabs()
         const relevantTabs = await allTabsForBufferArg(args)
         for (const t of relevantTabs.map(b => {
@@ -955,15 +958,4 @@ const suggestCommand = async searchStr => {
             }
         }
     }
-}
-
-module.exports = {
-    addExplore,
-    emptySuggestions,
-    next,
-    nextSection,
-    previous,
-    previousSection,
-    suggestCommand,
-    suggestExplore
 }

@@ -21,9 +21,10 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 */
-"use strict"
 
-const fs = require("node:fs")
+import fs from "node:fs"
+import {platform} from "node:os"
+import {join} from "node:path"
 
 /**
  * Check if the exception is a NodeJS Errno Exception.
@@ -50,13 +51,12 @@ const rmdirSync = (p, originalEr) => {
         }
         if (isErrnoException(error)
             && ["EEXIST", "ENOTEMPTY", "EPERM"].includes(error.code ?? "")) {
-            const {join} = require("node:path")
             for (const f of fs.readdirSync(p)) {
                 /* eslint-disable-next-line no-use-before-define */
                 rimrafSync(join(p, f))
             }
             let retries = 1
-            if (process.platform === "win32") {
+            if (platform() === "win32") {
                 retries = 100
             }
             let i = 0
@@ -118,7 +118,7 @@ const rimrafSync = p => {
         if (isErrnoException(error) && error.code === "ENOENT") {
             return
         }
-        if (process.platform === "win32"
+        if (platform() === "win32"
             && isErrnoException(error) && error.code === "EPERM") {
             fixWinEPERMSync(p, error)
         }
@@ -134,7 +134,7 @@ const rimrafSync = p => {
             return
         }
         if (isErrnoException(error) && error.code === "EPERM") {
-            if (process.platform === "win32") {
+            if (platform() === "win32") {
                 return fixWinEPERMSync(p, error)
             }
             return rmdirSync(p, error)
@@ -148,4 +148,4 @@ const rimrafSync = p => {
     }
 }
 
-module.exports = rimrafSync
+export default rimrafSync

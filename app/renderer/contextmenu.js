@@ -15,19 +15,18 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
-const {ipcRenderer} = require("electron")
-const {translate} = require("../translate")
-const {
+import {ipcRenderer} from "electron"
+import {translate} from "../translate.js"
+import {
     isElement,
     matchesQuery,
     propPixels,
     specialChars,
     urlToString
-} = require("../util")
-const {getSetting} = require("./settings")
-const {
+} from "../util.js"
+import {getSetting} from "./settings.js"
+import {
     currentMode,
     currentPage,
     currentTab,
@@ -42,7 +41,7 @@ const {
     sendToPageOrSubFrame,
     stringToUrl,
     tabForPage
-} = require("./util")
+} from "./util.js"
 
 /**
  * @typedef {(
@@ -68,7 +67,7 @@ const {
  *     force?: boolean,
  *     x?: number,
  *     y?: number,
- *     src?: import("./util").RunSource
+ *     src?: import("./util.js").RunSource
  *   },
  *   frame?: string,
  *   frameData?: {controllable?: false},
@@ -102,7 +101,7 @@ const contextMenu = document.getElementById("context-menu")
 let pointerRightClick = false
 
 /** Store that the right click action was done via pointer mode. */
-const storePointerRightClick = () => {
+export const storePointerRightClick = () => {
     pointerRightClick = true
     setTimeout(() => {
         pointerRightClick = false
@@ -110,7 +109,7 @@ const storePointerRightClick = () => {
 }
 
 /** Clear/hide the context menu. */
-const clear = () => {
+export const clear = () => {
     if (!contextMenu) {
         return
     }
@@ -181,10 +180,10 @@ const createMenuItem = options => {
 }
 
 /** Returns true if the context menu is open/active. */
-const active = () => !!contextMenu?.textContent?.trim()
+export const active = () => !!contextMenu?.textContent?.trim()
 
 /** Go to the top entry in the menu. */
-const top = () => {
+export const top = () => {
     if (!contextMenu) {
         return
     }
@@ -207,7 +206,7 @@ const topOfSection = () => {
 }
 
 /** Go one entry up, or go to the last entry via wrapping. */
-const up = () => {
+export const up = () => {
     if (!contextMenu) {
         return
     }
@@ -229,7 +228,7 @@ const up = () => {
 }
 
 /** Go up until reaching the top of the section above it. */
-const sectionUp = () => {
+export const sectionUp = () => {
     up()
     while (!topOfSection()) {
         up()
@@ -237,7 +236,7 @@ const sectionUp = () => {
 }
 
 /** Go one entry down, or go to the first entry via wrapping. */
-const down = () => {
+export const down = () => {
     if (!contextMenu) {
         return
     }
@@ -259,7 +258,7 @@ const down = () => {
 }
 
 /** Go down until reaching the top of the section below it. */
-const sectionDown = () => {
+export const sectionDown = () => {
     down()
     while (!topOfSection()) {
         down()
@@ -267,7 +266,7 @@ const sectionDown = () => {
 }
 
 /** Go to the bottom entry in the menu. */
-const bottom = () => {
+export const bottom = () => {
     if (!contextMenu) {
         return
     }
@@ -278,7 +277,7 @@ const bottom = () => {
 }
 
 /** Select the current entry in the menu. */
-const select = () => {
+export const select = () => {
     const selected = contextMenu?.querySelector(".selected")
     if (selected instanceof HTMLElement) {
         selected.click()
@@ -287,25 +286,25 @@ const select = () => {
 
 /**
  * Execute a common link action by name, position and custom options.
- * @param {import("./util").RunSource} src
+ * @param {import("./util.js").RunSource} src
  * @param {contextMenuType} type
  * @param {contextMenuAction} action
  * @param {Partial<webviewData>} options
  */
-const commonAction = async(src, type, action, options) => {
+export const commonAction = async(src, type, action, options) => {
     let relevantData = options[type]
     if (type === "img") {
         relevantData = options.img || options.backgroundImg || options.svgData
     }
     if (type === "linkPageTitle") {
-        const {titleForPage} = require("./history")
-        relevantData = titleForPage(options.link ?? "")
+        const {titleForPage} = await import("./history.js")
+        relevantData = await titleForPage(options.link ?? "")
     }
     if (!relevantData) {
         return
     }
-    const {add} = require("./pagelayout")
-    const {addTab} = require("./tabs")
+    const {add} = await import("./pagelayout.js")
+    const {addTab} = await import("./tabs.js")
     if (action === "copyimage") {
         await ipcRenderer.invoke("clear-clipboard")
         const el = document.createElement("img")
@@ -322,10 +321,10 @@ const commonAction = async(src, type, action, options) => {
         return
     }
     if (action === "open") {
-        const {navigateTo} = require("./tabs")
-        await navigateTo(src, stringToUrl(relevantData))
+        const {navigateTo} = await import("./tabs.js")
+        await navigateTo(src, await stringToUrl(relevantData))
     } else if (action === "newtab") {
-        await addTab({src, "url": stringToUrl(relevantData)})
+        await addTab({src, "url": await stringToUrl(relevantData)})
     } else if (action === "copy") {
         let urlData = relevantData
         if (await isUrl(relevantData)) {
@@ -338,14 +337,14 @@ const commonAction = async(src, type, action, options) => {
             } else if (encodeurlcopy === "decode") {
                 urlData = await urlToString(relevantData)
             } else if (encodeurlcopy === "encode") {
-                urlData = stringToUrl(relevantData)
+                urlData = await stringToUrl(relevantData)
             }
         }
         ipcRenderer.invoke("write-clipboard", urlData).catch(() => null)
     } else if (action === "download") {
-        const {updateDownloadSettings} = require("./settings")
+        const {updateDownloadSettings} = await import("./settings.js")
         await updateDownloadSettings(src)
-        currentPage()?.downloadURL(stringToUrl(relevantData ?? ""))
+        currentPage()?.downloadURL(await stringToUrl(relevantData ?? ""))
     } else if (action === "split") {
         const currentTabId = currentTab()?.getAttribute("link-id")
         if (currentTab() && currentTabId) {
@@ -385,9 +384,9 @@ const commonAction = async(src, type, action, options) => {
             } else if (encodeurlext === "decode") {
                 extData = await urlToString(relevantData)
             } else if (encodeurlext === "encode") {
-                extData = stringToUrl(relevantData)
+                extData = await stringToUrl(relevantData)
             }
-            execCommand(`${ext} "${extData}"`, async(err, stdout) => {
+            await execCommand(`${ext} "${extData}"`, async(err, stdout) => {
                 const reportExit = getSetting("notificationforsystemcommands")
                 if (err && reportExit !== "none") {
                     await notify({
@@ -416,18 +415,18 @@ const commonAction = async(src, type, action, options) => {
             })
         }
     } else if (action === "search") {
-        const {incrementalSearch} = require("./actions")
+        const {incrementalSearch} = await import("./actions.js")
         incrementalSearch({src, "value": relevantData})
     }
 }
 
 /**
  * Open Vieb's internal menu.
- * @param {import("./util").RunSource} src
+ * @param {import("./util.js").RunSource} src
  * @param {MouseEvent | {path: Element[], x: number, y: number}} options
  * @param {boolean} force
  */
-const viebMenu = async(src, options, force = false) => {
+export const viebMenu = async(src, options, force = false) => {
     if (!contextMenu) {
         return
     }
@@ -447,7 +446,7 @@ const viebMenu = async(src, options, force = false) => {
         openNewTabWithCurrentUrl,
         refreshTab,
         useEnteredData
-    } = require("./actions")
+    } = await import("./actions.js")
     const menuSetting = getSetting("menuvieb")
     const navMenu = menuSetting === "both" || menuSetting === "navbar" || force
     if (pathEls.some(el => matchesQuery(el, "#url")) && navMenu) {
@@ -456,7 +455,7 @@ const viebMenu = async(src, options, force = false) => {
             /** Menu item: Select all. */
             "action": async() => {
                 if (!"sec".includes(currentMode()[0])) {
-                    const {setMode} = require("./modes")
+                    const {setMode} = await import("./modes.js")
                     await setMode("explore")
                 }
                 url?.select()
@@ -475,10 +474,10 @@ const viebMenu = async(src, options, force = false) => {
                 /** Menu item: Cut selection. */
                 "action": async() => {
                     if (!"sec".includes(currentMode()[0])) {
-                        const {setMode} = require("./modes")
+                        const {setMode} = await import("./modes.js")
                         await setMode("explore")
                     }
-                    const {cutInput} = require("./input")
+                    const {cutInput} = await import("./input.js")
                     await cutInput()
                 },
                 "title": translate("contextmenu.text.cut")
@@ -487,11 +486,11 @@ const viebMenu = async(src, options, force = false) => {
                 /** Menu item: Copy selection. */
                 "action": async() => {
                     if (!"sec".includes(currentMode()[0])) {
-                        const {setMode} = require("./modes")
+                        const {setMode} = await import("./modes.js")
                         await setMode("explore")
                     }
-                    const {copyInput} = require("./input")
-                    copyInput()
+                    const {copyInput} = await import("./input.js")
+                    await copyInput()
                 },
                 "title": translate("contextmenu.text.copy")
             })
@@ -503,10 +502,10 @@ const viebMenu = async(src, options, force = false) => {
                 /** Menu item: Paste. */
                 "action": async() => {
                     if (!"sec".includes(currentMode()[0])) {
-                        const {setMode} = require("./modes")
+                        const {setMode} = await import("./modes.js")
                         await setMode("explore")
                     }
-                    const {pasteInput} = require("./input")
+                    const {pasteInput} = await import("./input.js")
                     await pasteInput()
                 },
                 "title": translate("contextmenu.text.paste")
@@ -515,10 +514,10 @@ const viebMenu = async(src, options, force = false) => {
                 /** Menu item: Paste and go to url. */
                 "action": async() => {
                     if (!"sec".includes(currentMode()[0])) {
-                        const {setMode} = require("./modes")
+                        const {setMode} = await import("./modes.js")
                         await setMode("explore")
                     }
-                    const {pasteInput} = require("./input")
+                    const {pasteInput} = await import("./input.js")
                     await pasteInput()
                     await useEnteredData({src})
                 },
@@ -529,8 +528,8 @@ const viebMenu = async(src, options, force = false) => {
     }
     const tabMenu = menuSetting === "both" || menuSetting === "tabbar" || force
     if (pathEls.some(el => matchesQuery(el, "#tabs")) && tabMenu) {
-        const {execute} = require("./command")
-        const {addTab, closeTab, reopenTab} = require("./tabs")
+        const {execute} = await import("./command.js")
+        const {addTab, closeTab, reopenTab} = await import("./tabs.js")
         const tab = listTabs().find(t => pathEls.includes(t))
         if (!tab) {
             fixAlignmentNearBorders()
@@ -560,7 +559,9 @@ const viebMenu = async(src, options, force = false) => {
             createMenuItem({
                 /** Menu item: toggle suspend. */
                 "action": async() => {
-                    const {suspendTab, unsuspendPage} = require("./tabs")
+                    const {
+                        suspendTab, unsuspendPage
+                    } = await import("./tabs.js")
                     if (isSuspended) {
                         await unsuspendPage(page)
                     } else {
@@ -672,17 +673,17 @@ const viebMenu = async(src, options, force = false) => {
 
 /**
  * Open the link menu for while in explore mode.
- * @param {import("./util").RunSource} src
+ * @param {import("./util.js").RunSource} src
  * @param {{link: string, x: number, y: number}} options
  */
-const linkMenu = (src, options) => {
+export const linkMenu = async(src, options) => {
     if (!contextMenu) {
         return
     }
     contextMenu.style.top = `${options.y}px`
     contextMenu.style.left = `${options.x}px`
     clear()
-    const {addTab, navigateTo} = require("./tabs")
+    const {addTab, navigateTo} = await import("./tabs.js")
     createMenuItem({
         /** Menu item: Navigate to link. */
         "action": () => navigateTo(src, options.link),
@@ -707,7 +708,7 @@ const linkMenu = (src, options) => {
     createMenuItem({
         /** Menu item: Link download. */
         "action": async() => {
-            const {updateDownloadSettings} = require("./settings")
+            const {updateDownloadSettings} = await import("./settings.js")
             await updateDownloadSettings(src)
             currentPage()?.downloadURL(options.link)
         },
@@ -736,10 +737,10 @@ const linkMenu = (src, options) => {
 
 /**
  * Open the command menu for while in command mode.
- * @param {import("./util").RunSource} src
+ * @param {import("./util.js").RunSource} src
  * @param {{command: string, x: number, y: number}} options
  */
-const commandMenu = (src, options) => {
+export const commandMenu = (src, options) => {
     if (!contextMenu) {
         return
     }
@@ -749,9 +750,9 @@ const commandMenu = (src, options) => {
     createMenuItem({
         /** Menu item: Execute the command. */
         "action": async() => {
-            const {setMode} = require("./modes")
+            const {setMode} = await import("./modes.js")
             await setMode("normal")
-            const {execute} = require("./command")
+            const {execute} = await import("./command.js")
             await execute(options.command, {src})
         },
         "title": translate("contextmenu.general.execute")
@@ -766,7 +767,7 @@ const commandMenu = (src, options) => {
 
 /**
  * Show the webview menu using custom options.
- * @param {import("./util").RunSource} src
+ * @param {import("./util.js").RunSource} src
  * @param {webviewData} options
  * @param {boolean} force
  */
@@ -776,11 +777,11 @@ const webviewMenu = async(src, options, force = false) => {
         return
     }
     if (!"ipv".includes(currentMode()[0])) {
-        const {setMode} = require("./modes")
+        const {setMode} = await import("./modes.js")
         await setMode("normal")
     }
     if (!force) {
-        const {getMouseConf} = require("./settings")
+        const {getMouseConf} = await import("./settings.js")
         if (!pointerRightClick && !getMouseConf("menupage")) {
             return
         }
@@ -799,7 +800,9 @@ const webviewMenu = async(src, options, force = false) => {
     if (!page || page.isCrashed()) {
         return
     }
-    const {backInHistory, forwardInHistory, refreshTab} = require("./actions")
+    const {
+        backInHistory, forwardInHistory, refreshTab
+    } = await import("./actions.js")
     const containerPos = pageContainerPos()
     const webviewY = propPixels(page.style, "top") + containerPos.top
     const webviewX = propPixels(page.style, "left") + containerPos.left
@@ -828,7 +831,7 @@ const webviewMenu = async(src, options, force = false) => {
     createMenuItem({
         /** Menu item: Save the page to disk. */
         "action": async() => {
-            const {execute} = require("./command")
+            const {execute} = await import("./command.js")
             await execute("write", {src})
         },
         "title": translate("contextmenu.tab.save")
@@ -840,7 +843,7 @@ const webviewMenu = async(src, options, force = false) => {
             Math.round(options.y * zoom + webviewY)),
         "title": translate("contextmenu.tab.inspect")
     })
-    const {updateKeysOnScreen} = require("./input")
+    const {updateKeysOnScreen} = await import("./input.js")
     await updateKeysOnScreen()
     if (options.canEdit && options.inputVal && (options.inputSel ?? 0) >= 0) {
         const wordRegex = specialChars.source.replace("[", "[^")
@@ -858,7 +861,7 @@ const webviewMenu = async(src, options, force = false) => {
             }
             wordIndex += 1
         }
-        const {webFrame} = require("electron")
+        const {webFrame} = await import("electron")
         const suggestions = webFrame.getWordSuggestions(word)
         if (suggestions.length > 0) {
             createMenuGroup("suggestions")
@@ -866,10 +869,10 @@ const webviewMenu = async(src, options, force = false) => {
         for (const suggestion of suggestions) {
             createMenuItem({
                 /** Menu item: Change the pointed word to this suggested fix. */
-                "action": () => {
+                "action": async() => {
                     words[wordIndex] = suggestion
-                    sendToPageOrSubFrame("replace-input-field", options.frameId,
-                        words.join(""), options.inputSel)
+                    await sendToPageOrSubFrame("replace-input-field",
+                        options.frameId, words.join(""), options.inputSel)
                 },
                 "title": suggestion
             })
@@ -1115,7 +1118,7 @@ const handleContextMenuClick = async(_, info) => {
         const page = listReadyPages().find(
             p => p.getWebContentsId() === info.webviewId)
         if (page) {
-            const {switchToTab} = require("./tabs")
+            const {switchToTab} = await import("./tabs.js")
             const tab = tabForPage(page)
             if (tab) {
                 await switchToTab(tab)
@@ -1132,24 +1135,6 @@ const handleContextMenuClick = async(_, info) => {
 }
 
 /** Register the context menu handler. */
-const init = () => {
+export const init = () => {
     ipcRenderer.on("context-click-info", handleContextMenuClick)
-}
-
-module.exports = {
-    active,
-    bottom,
-    clear,
-    commandMenu,
-    commonAction,
-    down,
-    init,
-    linkMenu,
-    sectionDown,
-    sectionUp,
-    select,
-    storePointerRightClick,
-    top,
-    up,
-    viebMenu
 }

@@ -15,11 +15,10 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
-const {appData, appendFile, joinPath, readFile} = require("../util")
-const {getSetting} = require("./settings")
-const {currentMode, getUrl} = require("./util")
+import {appData, appendFile, joinPath, readFile} from "../util.js"
+import {getSetting} from "./settings.js"
+import {currentMode, getUrl} from "./util.js"
 
 let exploreFile = ""
 /** @type {string[]} */
@@ -28,7 +27,7 @@ let previousIndex = -1
 let originalSite = ""
 
 /** Load the explore hist of the previous session if stored. */
-const init = async() => {
+export const init = async() => {
     exploreFile = joinPath(await appData(), "explorehist")
     const fileContent = await readFile(exploreFile)
     previousSites = fileContent?.split("\n").filter(Boolean) || []
@@ -44,12 +43,12 @@ const updateNavWithSite = async() => {
     if (url) {
         url.value = exploreText
     }
-    const {suggestExplore} = require("./suggest")
+    const {suggestExplore} = await import("./suggest.js")
     await suggestExplore(exploreText)
 }
 
 /** Go to the previous item in the explore history. */
-const previous = async() => {
+export const previous = async() => {
     if (currentMode() !== "explore") {
         return
     }
@@ -63,7 +62,7 @@ const previous = async() => {
 }
 
 /** Go to the next item in the explore history, or back to typed text. */
-const next = async() => {
+export const next = async() => {
     if (currentMode() !== "explore" || previousIndex === -1) {
         return
     }
@@ -76,7 +75,7 @@ const next = async() => {
 }
 
 /** Reset the position info for the explore history. */
-const resetPosition = () => {
+export const resetPosition = () => {
     previousIndex = -1
     originalSite = ""
 }
@@ -85,7 +84,7 @@ const resetPosition = () => {
  * Push a new user navigation to the list.
  * @param {string} explore
  */
-const push = async explore => {
+export const push = async explore => {
     const setting = getSetting("explorehist")
     if (setting === "none") {
         return
@@ -98,5 +97,3 @@ const push = async explore => {
         await appendFile(exploreFile, `${explore}\n`)
     }
 }
-
-module.exports = {init, next, previous, push, resetPosition}

@@ -15,11 +15,10 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
-const {ipcRenderer} = require("electron")
-const {formatDate} = require("../util")
-const {translate} = require("./util")
+import {ipcRenderer} from "electron"
+import {formatDate} from "../util.js"
+import {translate} from "./util.js"
 
 window.addEventListener("DOMContentLoaded", async() => {
     const h1 = document.querySelector("h1")
@@ -30,12 +29,13 @@ window.addEventListener("DOMContentLoaded", async() => {
     if (list) {
         list.textContent = await translate("pages.notifications.loading")
     }
+    ipcRenderer.sendToHost("notification-history-request")
 })
 
 /**
  * Show the list of notifications.
  * @param {Electron.IpcRendererEvent} _
- * @param {import("../renderer/util").notificationHistory} notifications
+ * @param {import("../renderer/util.js").notificationHistory} notifications
  */
 const showNofitications = async(_, notifications) => {
     const list = document.getElementById("list")

@@ -15,12 +15,11 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 /* eslint-disable no-extra-bind */
 
-const {contextBridge, ipcRenderer} = require("electron")
-const {userAgentPlatform, userAgentResolvedSystem} = require("../util")
-const {getSetting, notify, translate} = require("./util")
+import {contextBridge, ipcRenderer} from "electron"
+import {userAgentPlatform, userAgentResolvedSystem} from "../util.js"
+import {getSetting, notify, translate} from "./util.js"
 
 let promptBehavior = "notifyblock"
 let confirmBehavior = "notifyblock"
@@ -270,7 +269,7 @@ const loadUseragentAndRunPrivacyOverrides = async() => {
     const platformString = userAgentPlatform(useragentsys)
     const oscpuString = {
         "linux": "Linux x86_64", "mac": "MacIntel", "windows": "Win32"
-    }[userAgentResolvedSystem(useragentsys)]
+    }[await userAgentResolvedSystem(useragentsys)]
     contextBridge.executeInMainWorld({
         "args": [oscpuString, platformString],
         "func": privacyOverrides

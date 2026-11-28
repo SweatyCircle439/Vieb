@@ -15,13 +15,12 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
 // Change the colors to $FG text on $BG background for plain text pages
 // Change the background to white for regular pages with no explicit background
 // Optionally loads darkreader to override the page colors and use a dark theme
-const {ipcRenderer, webFrame} = require("electron")
-const {
+import {ipcRenderer, webFrame} from "electron"
+import {
     appData,
     domainName,
     expandPath,
@@ -31,8 +30,8 @@ const {
     listDir,
     pathToSpecialPageName,
     readFile
-} = require("../util")
-const {getColorVars, getSetting, notify} = require("./util")
+} from "../util.js"
+import {getColorVars, getSetting, notify} from "./util.js"
 
 const specialPage = pathToSpecialPageName(window.location.href)
 
@@ -48,9 +47,9 @@ const applyThemeStyling = async() => {
 }
 
 /** Disable the darkreader custom theme. */
-const disableDarkReader = () => {
+const disableDarkReader = async() => {
     try {
-        const darkreader = require("darkreader")
+        const darkreader = await import("darkreader")
         darkreader.disable()
         ipcRenderer.sendToHost("custom-style-inject", "darkreader")
     } catch {
@@ -60,10 +59,10 @@ const disableDarkReader = () => {
 
 /** Enable the darkreader custom theme. */
 const enableDarkReader = async() => {
-    disableDarkReader()
+    await disableDarkReader()
     let darkreader = null
     try {
-        darkreader = require("darkreader")
+        darkreader = await import("darkreader")
     } catch {
         notify({
             "id": "settings.errors.darkreader.missing",

@@ -15,14 +15,14 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
-const {ipcRenderer} = require("electron")
-const {isElement, matchesQuery, specialChars} = require("../util")
-const ACTIONS = require("./actions")
-const POINTER = require("./pointer")
-const {getSetting} = require("./settings")
-const {
+import {ipcRenderer} from "electron"
+import {platform} from "node:os"
+import {isElement, matchesQuery, specialChars} from "../util.js"
+import {clear as clearContextMenu} from "./contextmenu.js"
+import {followFiltering} from "./follow.js"
+import {getMouseConf, getSetting} from "./settings.js"
+import {
     currentMode,
     currentPage,
     currentTab,
@@ -36,8 +36,10 @@ const {
     setTopOfPageWithMouse,
     updateGuiVisibility,
     updateScreenshotHighlight
-} = require("./util")
+} from "./util.js"
 
+const ACTIONS = await import("./actions.js")
+const POINTER = await import("./pointer.js")
 /**
  * @type {{[mode: string]: {
  *   [key: string]: {mapping: string, noremap?: boolean}
@@ -697,7 +699,7 @@ for (const keysPerMode of Object.values(defaultBindings)) {
 let repeatCounter = 0
 let recursiveCounter = 0
 let pressedKeys = ""
-/** @type {import("./util").RunSource} */
+/** @type {import("./util.js").RunSource} */
 let keyboardEventSource = "user"
 /** @type {typeof defaultBindings} */
 let bindings = JSON.parse(JSON.stringify(defaultBindings))
@@ -724,7 +726,8 @@ let hadModifier = false
 /** @type {string|null} */
 let recordingName = null
 let recordingString = ""
-const keyNames = [
+
+export const keyNames = [
     {"js": ["<"], "vim": ["lt"]},
     {"js": [">"], "vim": [">", "gt"]},
     {"js": ["Backspace"], "vim": ["BS"]},
@@ -804,8 +807,9 @@ const keyNames = [
     // Fictional keys with custom implementation
     {"js": ["Any"], "vim": ["Any"]}
 ]
+
 // Single use actions that do not need to be called multiple times if counted
-const uncountableActions = [
+export const uncountableActions = [
     "emptySearch",
     "clickOnSearch",
     "toExploreMode",
@@ -932,7 +936,7 @@ const uncountableActions = [
 ]
 
 /** Reset the screenshot drag state after a small timeout. */
-const resetScreenshotDrag = () => setTimeout(() => {
+export const resetScreenshotDrag = () => setTimeout(() => {
     draggingScreenshotFrame = false
 }, 10)
 
@@ -944,10 +948,10 @@ const updateSuggestions = async() => {
     }
     const mode = currentMode()
     if (mode === "explore") {
-        const {suggestExplore} = require("./suggest")
+        const {suggestExplore} = await import("./suggest.js")
         await suggestExplore(url.value)
     } else if (mode === "command") {
-        const {suggestCommand} = require("./suggest")
+        const {suggestCommand} = await import("./suggest.js")
         await suggestCommand(url.value)
     } else if (mode === "search" && getSetting("incsearch")) {
         ACTIONS.incrementalSearch({"src": "other"})
@@ -958,7 +962,7 @@ const updateSuggestions = async() => {
  * Request an update to the suggestions with debounce and input history.
  * @param {boolean} updateHistory
  */
-const requestSuggestUpdate = async(updateHistory = true) => {
+export const requestSuggestUpdate = async(updateHistory = true) => {
     const url = getUrl()
     const suggestBounceDelay = getSetting("suggestbouncedelay")
     if (updateHistory
@@ -985,10 +989,9 @@ const requestSuggestUpdate = async(updateHistory = true) => {
  * @param {number} x
  * @param {number} y
  */
-const moveScreenshotFrame = async(x, y) => {
+export const moveScreenshotFrame = async(x, y) => {
     const deltaX = x - lastScreenshotX
     const deltaY = y - lastScreenshotY
-    const {getMouseConf} = require("./settings")
     if (getMouseConf("screenshotframe") && draggingScreenshotFrame) {
         if (currentMode() !== "command" || !currentPage()) {
             return
@@ -1077,7 +1080,7 @@ const updateNavbarScrolling = () => {
  * Execute the cut clipboard action on the url.
  * @param {Event|null} event
  */
-const cutInput = async(event = null) => {
+export const cutInput = async(event = null) => {
     event?.preventDefault()
     let selection = document.getSelection()?.toString() ?? ""
     if (currentMode() === "explore" && await isUrl(selection)) {
@@ -1100,7 +1103,7 @@ const cutInput = async(event = null) => {
  * Execute the copy clipboard action on the url.
  * @param {Event|null} event
  */
-const copyInput = async(event = null) => {
+export const copyInput = async(event = null) => {
     event?.preventDefault()
     let selection = document.getSelection()?.toString() ?? ""
     if (currentMode() === "explore" && await isUrl(selection)) {
@@ -1113,7 +1116,7 @@ const copyInput = async(event = null) => {
  * Execute the paste clipboard action on the url.
  * @param {Event|null} event
  */
-const pasteInput = async(event = null) => {
+export const pasteInput = async(event = null) => {
     event?.preventDefault()
     const url = getUrl()
     if (!url) {
@@ -1180,7 +1183,7 @@ const toIdentifier = e => {
  * Split the mapstring by key.
  * @param {string} mapStr
  */
-const splitMapString = mapStr => {
+export const splitMapString = mapStr => {
     const maps = []
     let bracketCounter = 0
     let temp = ""
@@ -1304,7 +1307,7 @@ const findMaps = (actionKeys, mode, future = false) => {
 const hasFutureActions = keys => findMaps(keys, currentMode(), true).length
 
 /** Update the keys listed on screen, mapsuggest, repeater and recordings. */
-const updateKeysOnScreen = async() => {
+export const updateKeysOnScreen = async() => {
     const repeatCounterEl = document.getElementById("repeat-counter")
     const pressedKeysEl = document.getElementById("pressed-keys")
     const recordNameEl = document.getElementById("record-name")
@@ -1334,7 +1337,7 @@ const updateKeysOnScreen = async() => {
     if (mapsuggestElement) {
         mapsuggestElement.style.display = "none"
     }
-    const {active} = require("./contextmenu")
+    const {active} = await import("./contextmenu.js")
     if (mapsuggestcount > 0 && mapsuggestElement) {
         const mapsuggestPosition = getSetting("mapsuggestposition")
         mapsuggestElement.className = mapsuggestPosition
@@ -1391,8 +1394,8 @@ const updateKeysOnScreen = async() => {
  * Find the right action for a set of keys in the current mode.
  * @param {string} keys
  */
-const actionForKeys = keys => {
-    const {active} = require("./contextmenu")
+const actionForKeys = async keys => {
+    const {active} = await import("./contextmenu.js")
     const allMenu = findMaps(keys, "menu")
     const menuAction = bindings.m[allMenu[0]]
     if (active() && menuAction) {
@@ -1413,16 +1416,16 @@ const actionForKeys = keys => {
  *   key: string
  * }} options
  * @param {string} mapStr
- * @param {import("./util").RunSource} src
+ * @param {import("./util.js").RunSource} src
  */
 const sendKeysToWebview = async(options, mapStr, src) => {
     if (recordingName) {
         recordingString += mapStr
     }
     blockNextInsertKey = true
-    sendToPageOrSubFrame("send-keyboard-event", options)
+    await sendToPageOrSubFrame("send-keyboard-event", options)
     if (options.bubbles) {
-        const action = actionForKeys(mapStr)
+        const action = await actionForKeys(mapStr)
         if (action) {
             // eslint-disable-next-line no-use-before-define
             await executeMapString(action.mapping, !action.noremap, {src})
@@ -1439,7 +1442,7 @@ const sendKeysToWebview = async(options, mapStr, src) => {
  * @param {{
  *   givenCount?: number,
  *   key?: string|undefined,
- *   src: import("./util").RunSource
+ *   src: import("./util.js").RunSource
  * }} opts
  */
 const doAction = async(actionName, opts) => {
@@ -1469,8 +1472,7 @@ const doAction = async(actionName, opts) => {
         }
     }
     if (!funcName.startsWith("menu") && funcName !== "nop") {
-        const {clear} = require("./contextmenu")
-        clear()
+        clearContextMenu()
     }
     repeatCounter = 0
 }
@@ -1481,10 +1483,10 @@ const doAction = async(actionName, opts) => {
  * @param {boolean} recursive
  * @param {{
  *   initial?: boolean,
- *   src: import("./util").RunSource
+ *   src: import("./util.js").RunSource
  * }} opts
  */
-const executeMapString = async(mapStr, recursive, opts) => {
+export const executeMapString = async(mapStr, recursive, opts) => {
     const actionCallKey = splitMapString(pressedKeys).maps.at(-1)
     if (opts.initial) {
         keyboardEventSource = opts.src
@@ -1531,7 +1533,7 @@ const executeMapString = async(mapStr, recursive, opts) => {
                 continue
             }
             if (key.startsWith("<:")) {
-                const {execute} = require("./command")
+                const {execute} = await import("./command.js")
                 await execute(key.replace(/^<:|>$/g, ""), {"src": opts.src})
                 lastActionInMapping = null
                 await new Promise(r => {
@@ -1575,9 +1577,9 @@ const executeMapString = async(mapStr, recursive, opts) => {
 
 /**
  * Repeat the last run action.
- * @param {import("./util").RunSource} src
+ * @param {import("./util.js").RunSource} src
  */
-const repeatLastAction = async src => {
+export const repeatLastAction = async src => {
     if (lastExecutedMapstring) {
         await executeMapString(lastExecutedMapstring.mapStr,
             lastExecutedMapstring.recursive, {"initial": true, src})
@@ -1591,10 +1593,10 @@ const repeatLastAction = async src => {
  * @param {string} key
  */
 const keyForOs = (regular, mac, key) => regular.includes(key)
-    || process.platform === "darwin" && mac.includes(key)
+    || platform() === "darwin" && mac.includes(key)
 
 /** Reset the input history to the default no history state. */
-const resetInputHistory = () => {
+export const resetInputHistory = () => {
     inputHistoryList = [{"index": 0, "value": ""}]
     inputHistoryIndex = 0
 }
@@ -1604,7 +1606,7 @@ const resetInputHistory = () => {
  * @param {string} character
  * @param {boolean} force
  */
-const typeCharacterIntoNavbar = async(character, force = false) => {
+export const typeCharacterIntoNavbar = async(character, force = false) => {
     if (!"ces".includes(currentMode()[0]) && !force) {
         return
     }
@@ -1789,7 +1791,7 @@ const typeCharacterIntoNavbar = async(character, force = false) => {
         return
     }
     if (keyForOs(["<C-c>", "<C-Insert>"], ["<M-c>"], id)) {
-        copyInput()
+        await copyInput()
         return
     }
     if (keyForOs(["<C-v>", "<S-Insert>"], ["<M-v>"], id)) {
@@ -1943,11 +1945,13 @@ const isEmptyObject = obj => {
 
 /**
  * Sanitize any mapstring to the shortest valid version.
- * @param {import("./util").RunSource} src
+ * @param {import("./util.js").RunSource} src
  * @param {string} mapString
  * @param {boolean} allowSpecials
  */
-const sanitiseMapString = async(src, mapString, allowSpecials = false) => {
+export const sanitiseMapString = async(
+    src, mapString, allowSpecials = false
+) => {
     const {leftover, maps, valid} = splitMapString(mapString)
     if (!valid) {
         await notify({
@@ -2039,7 +2043,7 @@ const sanitiseMapString = async(src, mapString, allowSpecials = false) => {
 }
 
 /** Restart or clear the insert mode leave timeout timer. */
-const resetInsertLeaveTimeout = () => {
+export const resetInsertLeaveTimeout = () => {
     clearTimeout(insertleavetimeoutTimer ?? undefined)
     if (currentMode() !== "insert") {
         return
@@ -2117,12 +2121,12 @@ const handleKeyboard = async e => {
     hadModifier = e.shiftKey || e.ctrlKey
     clearTimeout(timeoutTimer ?? undefined)
     resetInsertLeaveTimeout()
-    const {active, clear} = require("./contextmenu")
+    const {active} = await import("./contextmenu.js")
     if (getSetting("timeout")) {
         timeoutTimer = setTimeout(async() => {
             const keys = splitMapString(pressedKeys).maps
             if (pressedKeys) {
-                const ac = actionForKeys(pressedKeys)
+                const ac = await actionForKeys(pressedKeys)
                 pressedKeys = ""
                 if (ac && (e.isTrusted || e.bubbles)) {
                     if (e.isTrusted) {
@@ -2136,7 +2140,7 @@ const handleKeyboard = async e => {
                     }
                     return
                 }
-                clear()
+                clearContextMenu()
             }
             if (currentMode() === "insert") {
                 await ipcRenderer.invoke("insert-mode-blockers", "pass")
@@ -2162,7 +2166,8 @@ const handleKeyboard = async e => {
     if ("npv".includes(currentMode()[0]) || active()) {
         const keyNumber = Number(id.replace(/^<k(\d)>/g, (_, digit) => digit))
         const noFutureActions = !hasFutureActions(pressedKeys + id)
-        const shouldCount = !actionForKeys(pressedKeys + id) || repeatCounter
+        const shouldCount = !await actionForKeys(pressedKeys + id)
+            || repeatCounter
         if (!Number.isNaN(keyNumber) && noFutureActions && shouldCount) {
             repeatCounter = Number(String(repeatCounter) + keyNumber)
             const countlimit = getSetting("countlimit")
@@ -2187,8 +2192,8 @@ const handleKeyboard = async e => {
     if (hasFutureActions(pressedKeys + id)) {
         pressedKeys += id
     } else {
-        const action = actionForKeys(pressedKeys)
-        const existingMapping = actionForKeys(pressedKeys + id)
+        const action = await actionForKeys(pressedKeys)
+        const existingMapping = await actionForKeys(pressedKeys + id)
         if (action && !existingMapping && !["<C-[>", "<Esc>"].includes(id)) {
             pressedKeys = ""
             await executeMapString(action.mapping, !action.noremap, {
@@ -2197,7 +2202,7 @@ const handleKeyboard = async e => {
         }
         pressedKeys += id
     }
-    const action = actionForKeys(pressedKeys)
+    const action = await actionForKeys(pressedKeys)
     const hasMenuAction = active() && action
     if (!hasFutureActions(pressedKeys) || hasMenuAction) {
         clearTimeout(timeoutTimer ?? undefined)
@@ -2213,7 +2218,7 @@ const handleKeyboard = async e => {
             }
             return
         }
-        clear()
+        clearContextMenu()
         let keys = splitMapString(pressedKeys).maps
         pressedKeys = ""
         if (keys.length > 1) {
@@ -2240,11 +2245,11 @@ const handleKeyboard = async e => {
         }
         repeatCounter = 0
     }
-    clear()
+    clearContextMenu()
     await updateKeysOnScreen()
     if (currentMode() === "follow") {
         if (e instanceof KeyboardEvent && e.type === "keydown") {
-            const {enterKey} = require("./follow")
+            const {enterKey} = await import("./follow.js")
             let unshiftedName = e.key.toLowerCase()
             if (e.key.toUpperCase() === unshiftedName && hadModifier) {
                 const map = await window.navigator.keyboard?.getLayoutMap()
@@ -2258,7 +2263,7 @@ const handleKeyboard = async e => {
 }
 
 /** List all the supported actions. */
-const listSupportedActions = () => supportedActions
+export const listSupportedActions = () => supportedActions
 
 /**
  * Check if mapping has been modified compared to the defaults.
@@ -2280,7 +2285,7 @@ const mappingModified = (mode, mapping) => {
 
 /**
  * List a mapping as if set via a command.
- * @param {import("./util").RunSource} src
+ * @param {import("./util.js").RunSource} src
  * @param {string} mode
  * @param {boolean} includeDefault
  * @param {string} rawKey
@@ -2305,12 +2310,12 @@ const listMapping = async(src, mode, includeDefault, rawKey) => {
 
 /**
  * List mappings as a list of map commands.
- * @param {import("./util").RunSource} src
+ * @param {import("./util.js").RunSource} src
  * @param {string|null} oneMode
  * @param {boolean} includeDefault
  * @param {string[]|null} customKeys
  */
-const listMappingsAsCommandList = async(
+export const listMappingsAsCommandList = async(
     src, oneMode = null, includeDefault = false, customKeys = null
 ) => {
     /** @type {string[]} */
@@ -2346,7 +2351,7 @@ const listMappingsAsCommandList = async(
 
 /**
  * Map a single key.
- * @param {import("./util").RunSource} src
+ * @param {import("./util.js").RunSource} src
  * @param {string|null} mode
  * @param {string[]} args
  * @param {boolean} noremap
@@ -2364,19 +2369,19 @@ const mapSingle = async(src, mode, args, noremap) => {
             value[mapping] = {"mapping": actions, noremap}
         }
     }
-    const {updateHelpPage} = require("./settings")
+    const {updateHelpPage} = await import("./settings.js")
     await updateHelpPage(src)
 }
 
 /**
  * Handle the map command, so either list a mapping or set it.
- * @param {import("./util").RunSource} src
+ * @param {import("./util.js").RunSource} src
  * @param {string|null} mode
  * @param {string[]} args
  * @param {boolean} noremap
  * @param {boolean} includeDefault
  */
-const mapOrList = async(
+export const mapOrList = async(
     src, mode, args, noremap = false, includeDefault = false
 ) => {
     if (includeDefault && args.length > 1) {
@@ -2425,12 +2430,12 @@ const mapOrList = async(
 
 /**
  * Unmap a specific key.
- * @param {import("./util").RunSource} src
+ * @param {import("./util.js").RunSource} src
  * @param {string|null} mode
  * @param {string[]} args
  * @param {boolean} anyAsWildcard
  */
-const unmap = async(src, mode, args, anyAsWildcard) => {
+export const unmap = async(src, mode, args, anyAsWildcard) => {
     if (args.length !== 1) {
         await notify({
             "fields": [mode ?? ""],
@@ -2463,17 +2468,17 @@ const unmap = async(src, mode, args, anyAsWildcard) => {
             delete bindings[bindMode][mapStr]
         }
     }
-    const {updateHelpPage} = require("./settings")
+    const {updateHelpPage} = await import("./settings.js")
     await updateHelpPage(src)
 }
 
 /**
  * Clear all mappings to default or wipe them completely, optionally per mode.
- * @param {import("./util").RunSource} src
+ * @param {import("./util.js").RunSource} src
  * @param {string|null} mode
  * @param {boolean} removeDefaults
  */
-const clearmap = async(src, mode, removeDefaults = false) => {
+export const clearmap = async(src, mode, removeDefaults = false) => {
     if (mode) {
         if (removeDefaults) {
             bindings[mode] = {}
@@ -2487,16 +2492,16 @@ const clearmap = async(src, mode, removeDefaults = false) => {
     } else {
         bindings = JSON.parse(JSON.stringify(defaultBindings))
     }
-    const {updateHelpPage} = require("./settings")
+    const {updateHelpPage} = await import("./settings.js")
     await updateHelpPage(src)
 }
 
 /**
  * Start a macro recording by key name.
  * @param {string} name
- * @param {import("./util").RunSource} src
+ * @param {import("./util.js").RunSource} src
  */
-const startRecording = async(name, src) => {
+export const startRecording = async(name, src) => {
     if (recordingName) {
         await notify({"id": "actions.alreadyRecording", src, "type": "warning"})
         return
@@ -2508,7 +2513,7 @@ const startRecording = async(name, src) => {
 /**
  * Stop the current macro recording.
  */
-const stopRecording = () => {
+export const stopRecording = () => {
     if (!recordingName) {
         return
     }
@@ -2539,12 +2544,11 @@ const urlOrSuggest = ev => ev.composedPath().find(
         "#url, #suggest-dropdown, #screenshot-highlight"))
 
 /** Setup all input listeners for both keyboard and mouse across the app. */
-const init = async() => {
+export const init = async() => {
     window.addEventListener("keydown", handleKeyboard)
     window.addEventListener("keypress", e => e.preventDefault())
     window.addEventListener("keyup", e => e.preventDefault())
     window.addEventListener("mousedown", async e => {
-        const {getMouseConf} = require("./settings")
         if (e.button === 3) {
             e.preventDefault()
             if (getMouseConf("history")) {
@@ -2574,7 +2578,6 @@ const init = async() => {
             e.preventDefault()
         }
         if (e.target === getUrl()) {
-            const {followFiltering} = require("./follow")
             const typing = "sec".includes(currentMode()[0]) || followFiltering()
             if (typing && !getMouseConf("url")) {
                 e.preventDefault()
@@ -2590,16 +2593,14 @@ const init = async() => {
         }
     })
     document.getElementById("tabs")?.addEventListener("dblclick", async e => {
-        const {getMouseConf} = require("./settings")
         e.preventDefault()
         if (getMouseConf("newtab")) {
-            const {addTab} = require("./tabs")
+            const {addTab} = await import("./tabs.js")
             await addTab({"src": "user"})
         }
         await ACTIONS.setFocusCorrectly()
     })
-    window.addEventListener("wheel", ev => {
-        const {getMouseConf} = require("./settings")
+    window.addEventListener("wheel", async ev => {
         if (ev.composedPath().some(e => isElement(e)
             && matchesQuery(e, "#tabs")) && getMouseConf("scrolltabs")) {
             // Make both directions of scrolling move the tabs horizontally
@@ -2609,11 +2610,16 @@ const init = async() => {
         const overPageElements = "#follow, #screenshot-highlight, #pointer, "
             + "#url-hover, #loading-progress"
         if (ev.composedPath().some(e => isElement(e)
+            && matchesQuery(e, "#suggest-dropdown"))
+            && !getMouseConf("scrollsuggest")) {
+            ev.preventDefault()
+        }
+        if (ev.composedPath().some(e => isElement(e)
             && matchesQuery(e, overPageElements))) {
             const page = currentPage()
             if (getMouseConf("pageoutsideinsert") && page) {
                 const {left, top} = pageOffset(page)
-                sendToPageOrSubFrame("send-input-event", {
+                await sendToPageOrSubFrame("send-input-event", {
                     "deltaX": -ev.deltaX,
                     "deltaY": -ev.deltaY,
                     "type": "scroll",
@@ -2622,15 +2628,8 @@ const init = async() => {
                 })
             }
         }
-        if (ev.composedPath().some(e => isElement(e)
-            && matchesQuery(e, "#suggest-dropdown"))
-            && !getMouseConf("scrollsuggest")) {
-            ev.preventDefault()
-        }
     }, {"passive": false})
     window.addEventListener("drop", async e => {
-        const {followFiltering} = require("./follow")
-        const {getMouseConf} = require("./settings")
         const typing = "sec".includes(currentMode()[0]) || followFiltering()
         if (e.target !== getUrl()) {
             if (!typing) {
@@ -2652,7 +2651,6 @@ const init = async() => {
         }
     })
     window.addEventListener("mouseup", async e => {
-        const {getMouseConf} = require("./settings")
         if (draggingScreenshotFrame) {
             setTimeout(() => {
                 draggingScreenshotFrame = false
@@ -2663,7 +2661,6 @@ const init = async() => {
         if (e.target !== getUrl()) {
             e.preventDefault()
         }
-        const {followFiltering} = require("./follow")
         const typing = "sec".includes(currentMode()[0]) || followFiltering()
         if (e.target === getUrl()) {
             if (typing) {
@@ -2691,11 +2688,10 @@ const init = async() => {
                 return false
             })
             if (tab instanceof HTMLElement) {
-                const {closeTab} = require("./tabs")
+                const {closeTab} = await import("./tabs.js")
                 await closeTab("user", listTabs().indexOf(tab))
             }
-            const {clear} = require("./contextmenu")
-            clear()
+            clearContextMenu()
         }
         await ACTIONS.setFocusCorrectly()
     })
@@ -2703,7 +2699,6 @@ const init = async() => {
     window.addEventListener("copy", copyInput)
     window.addEventListener("paste", pasteInput)
     window.addEventListener("click", async e => {
-        const {getMouseConf} = require("./settings")
         if (e.composedPath().some(n => isElement(n)
             && matchesQuery(n, "#context-menu"))) {
             return
@@ -2712,8 +2707,7 @@ const init = async() => {
             e.preventDefault()
             return
         }
-        const {clear} = require("./contextmenu")
-        clear()
+        clearContextMenu()
         if (!(e.target instanceof HTMLElement)) {
             return
         }
@@ -2722,7 +2716,6 @@ const init = async() => {
         }
         e.preventDefault()
         if (urlOrSuggest(e)) {
-            const {followFiltering} = require("./follow")
             const typing = "sec".includes(currentMode()[0]) || followFiltering()
             if (!typing && getMouseConf("toexplore")) {
                 await ACTIONS.toExploreMode()
@@ -2739,8 +2732,8 @@ const init = async() => {
                 return false
             })
             if (tab instanceof HTMLSpanElement) {
-                clear()
-                const {switchToTab} = require("./tabs")
+                clearContextMenu()
+                const {switchToTab} = await import("./tabs.js")
                 await switchToTab(tab)
             }
         }
@@ -2748,7 +2741,6 @@ const init = async() => {
     })
     const tabSelector = "#pagelayout *[link-id], #tabs *[link-id]"
     window.addEventListener("mousemove", async e => {
-        const {getMouseConf} = require("./settings")
         if (e.y === 0) {
             await setTopOfPageWithMouse(getMouseConf("guiontop"))
         }
@@ -2760,7 +2752,7 @@ const init = async() => {
                 const tab = listTabs().find(t => t.getAttribute(
                     "link-id") === n.getAttribute("link-id"))
                 if (tab && currentTab() !== tab) {
-                    const {switchToTab} = require("./tabs")
+                    const {switchToTab} = await import("./tabs.js")
                     await switchToTab(tab)
                 }
             }
@@ -2769,34 +2761,30 @@ const init = async() => {
     })
     window.addEventListener("contextmenu", async e => {
         e.preventDefault()
-        const {getMouseConf} = require("./settings")
         if (getMouseConf("leaveinput")) {
-            const {followFiltering} = require("./follow")
             const typing = "sec".includes(currentMode()[0]) || followFiltering()
             if (typing && !urlOrSuggest(e)) {
                 await ACTIONS.toNormalMode()
             }
         }
         if (getMouseConf("menuvieb")) {
-            const {viebMenu} = require("./contextmenu")
+            const {viebMenu} = await import("./contextmenu.js")
             await viebMenu("user", e)
         }
         await ACTIONS.setFocusCorrectly()
     })
-    window.addEventListener("resize", () => {
-        const {clear} = require("./contextmenu")
-        clear()
-        const {applyLayout} = require("./pagelayout")
+    window.addEventListener("resize", async() => {
+        clearContextMenu()
+        const {applyLayout} = await import("./pagelayout.js")
         applyLayout()
         if (["pointer", "visual"].includes(currentMode())) {
-            POINTER.updateElement()
+            await POINTER.updateElement()
         }
     })
     window.addEventListener("blur", () => {
         setTimeout(ACTIONS.setFocusCorrectly, 5)
     })
     ipcRenderer.on("zoom-changed", (_, ctxId, direction) => {
-        const {getMouseConf} = require("./settings")
         const page = listReadyPages().find(p => p.getWebContentsId() === ctxId)
         if (!page || !getMouseConf("scrollzoom")) {
             return
@@ -2857,7 +2845,7 @@ const init = async() => {
         ACTIONS.setFocusCorrectly().catch(() => null)
     })
     ipcRenderer.on("execute-command", async(_, command) => {
-        const {execute} = require("./command")
+        const {execute} = await import("./command.js")
         await execute(command, {"src": "execute"})
     })
     ipcRenderer.on("window-update-gui", () => updateGuiVisibility())
@@ -2878,31 +2866,4 @@ const init = async() => {
         ...Object.keys(ACTIONS), ...Object.keys(POINTER).map(c => `p.${c}`)
     ].filter(m => !unSupportedActions.has(m))
     await updateKeysOnScreen()
-}
-
-module.exports = {
-    clearmap,
-    copyInput,
-    cutInput,
-    executeMapString,
-    init,
-    keyNames,
-    listMappingsAsCommandList,
-    listSupportedActions,
-    mapOrList,
-    moveScreenshotFrame,
-    pasteInput,
-    repeatLastAction,
-    requestSuggestUpdate,
-    resetInputHistory,
-    resetInsertLeaveTimeout,
-    resetScreenshotDrag,
-    sanitiseMapString,
-    splitMapString,
-    startRecording,
-    stopRecording,
-    typeCharacterIntoNavbar,
-    uncountableActions,
-    unmap,
-    updateKeysOnScreen
 }

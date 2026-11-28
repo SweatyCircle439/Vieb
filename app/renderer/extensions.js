@@ -15,9 +15,9 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
-const {
+import {arch, platform} from "node:os"
+import {
     appConfig,
     appData,
     domainName,
@@ -26,8 +26,8 @@ const {
     listDir,
     pathToSpecialPageName,
     readFile
-} = require("../util")
-const {getSetting} = require("./settings")
+} from "../util.js"
+import {getSetting} from "./settings.js"
 
 /**
  * Parse the GM userscript header.
@@ -85,8 +85,8 @@ const runGMScript = async(webview, rawContents) => {
         }
     }
     const info = parseGM(headerLines.join("\n"))
-    const os = process.platform.replace("32", "").replace("darwin", "mac")
-    const arch = process.arch.replace("arm64", "arm").replace("x64", "x86_64")
+    const os = platform().replace("32", "").replace("darwin", "mac")
+    const sys = arch().replace("arm64", "arm").replace("x64", "x86_64")
     const config = await appConfig()
     const preload = `const GM = {
         "addElement": (...args) => {
@@ -149,16 +149,16 @@ const runGMScript = async(webview, rawContents) => {
         "info": {
             "injectInto": "page",
             "platform": {
-                "arch": "${arch}",
+                "arch": "${sys}",
                 "browserName": "vieb",
-                "browserVersion": "${config?.version}",
+                "browserVersion": "${config?.versions.app}",
                 "os": "${os}"
             },
             "script": ${JSON.stringify(info)},
             "scriptHandler": "Vieb",
             "scriptMetaStr": ${JSON.stringify(headerLines.join("\n"))},
             "uuid": "${Math.random()}",
-            "version": "${config?.version}"
+            "version": "${config?.versions.app}"
         },
         "listValues": () => new Promise(res => {
             const list = []
@@ -219,10 +219,10 @@ const runGMScript = async(webview, rawContents) => {
     const GM_xmlHttpRequest = GM.xmlHttpRequest
     const GM_xmlhttpRequest = GM.xmlHttpRequest
     const unsafeWindow = window\n`
-    /** @type {import("picomatch")|null} */
-    let picomatch = null
+    /** @type {import("picomatch").isMatch|null} */
+    let isMatch = null
     try {
-        picomatch = require("picomatch")
+        ({isMatch} = await import("picomatch"))
     } catch {
         // No picomatch available, assume scripts should run everywhere
     }
@@ -244,10 +244,10 @@ const runGMScript = async(webview, rawContents) => {
         }
         let included = true
         let excluded = false
-        if (picomatch) {
-            included = picomatch.isMatch(
+        if (isMatch) {
+            included = isMatch(
                 webview.src, info.includes, {"bash": true})
-            excluded = picomatch.isMatch(
+            excluded = isMatch(
                 webview.src, info.excludes, {"bash": true})
         }
         if (included && !excluded) {
@@ -263,7 +263,7 @@ const runGMScript = async(webview, rawContents) => {
  * Load all userscripts into the page.
  * @param {Electron.WebviewTag} webview
  */
-const loadUserscripts = async webview => {
+export const loadUserscripts = async webview => {
     let domain = domainName(webview.src)
     let scope = "page"
     const specialPage = pathToSpecialPageName(webview.src)
@@ -309,5 +309,3 @@ const loadUserscripts = async webview => {
         }
     }
 }
-
-module.exports = {loadUserscripts}

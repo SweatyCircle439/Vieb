@@ -15,9 +15,8 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
-const {
+import {
     appConfig,
     appData,
     deleteFile,
@@ -32,9 +31,9 @@ const {
     pathToSpecialPageName,
     readJSON,
     writeJSON
-} = require("../util")
-const {getSetting} = require("./settings")
-const {currentPage, listPages, stringToUrl, tabForPage} = require("./util")
+} from "../util.js"
+import {getSetting} from "./settings.js"
+import {currentPage, listPages, stringToUrl, tabForPage} from "./util.js"
 
 let faviconFolder = ""
 let mappingFile = ""
@@ -63,7 +62,7 @@ const urlToPath = url => {
  * Update the current mappings file and delete unused ones from the cache.
  * @param {{currentUrl?: string|null, now?: boolean|null}} arg
  */
-const updateMappings = async({currentUrl = null, now = null} = {}) => {
+export const updateMappings = async({currentUrl = null, now = null} = {}) => {
     // Don't update the mappings before done loading or in rapid succession
     clearTimeout(faviconWriteTimeout ?? undefined)
     if (!now || !isParsed) {
@@ -73,7 +72,7 @@ const updateMappings = async({currentUrl = null, now = null} = {}) => {
         return
     }
     // Delete mappings for urls that aren't present in the history
-    const {visitCount} = require("./history")
+    const {visitCount} = await import("./history.js")
     for (const m of Object.keys(mappings)) {
         if (m === "redirects") {
             for (const r of Object.keys(mappings.redirects ?? {})) {
@@ -123,7 +122,7 @@ const updateMappings = async({currentUrl = null, now = null} = {}) => {
  * @param {Electron.WebviewTag} webview
  * @param {boolean} empty
  */
-const loading = (webview, empty = false) => {
+export const loading = (webview, empty = false) => {
     const loadingIndicator = getSetting("loadingindicator")
     const tab = tabForPage(webview)
     const status = tab?.querySelector(".status")
@@ -211,7 +210,7 @@ const deleteIfTooOld = loc => {
  * @param {Electron.WebviewTag} webview
  * @param {string} favicon
  */
-const update = async(webview, favicon) => {
+export const update = async(webview, favicon) => {
     const tab = tabForPage(webview)
     if (viebIcon === favicon) {
         if (!pathToSpecialPageName(webview.src)?.name) {
@@ -221,7 +220,7 @@ const update = async(webview, favicon) => {
         const config = await appConfig()
         const customIcon = config?.icon
         if (tab && customIcon) {
-            setPath(tab, stringToUrl(customIcon))
+            setPath(tab, await stringToUrl(customIcon))
             return
         }
     }
@@ -247,7 +246,7 @@ const update = async(webview, favicon) => {
         return
     }
     makeDir(faviconFolder)
-    const {ipcRenderer} = require("electron")
+    const {ipcRenderer} = await import("electron")
     ipcRenderer.send("download-favicon", {
         "fav": favicon,
         "linkId": webview.getAttribute("link-id"),
@@ -261,14 +260,14 @@ const update = async(webview, favicon) => {
  * Get a redirect.
  * @param {string} url
  */
-const getRedirect = url => mappings.redirects?.[url] || url
+export const getRedirect = url => mappings.redirects?.[url] || url
 
 /**
  * Copy an existing favicon link to another page at a different url.
  * @param {string} existing
  * @param {string} newPage
  */
-const copyMapping = (existing, newPage) => {
+export const copyMapping = (existing, newPage) => {
     mappings[newPage] = mappings[getRedirect(existing)]
 }
 
@@ -276,7 +275,7 @@ const copyMapping = (existing, newPage) => {
  * Get the resolved file path or local image for a given site.
  * @param {string} url
  */
-const forSite = url => {
+export const forSite = url => {
     if (getSetting("favicons") === "disabled") {
         return ""
     }
@@ -305,7 +304,7 @@ const forSite = url => {
  * Show the favicon that was previously set for this site, and stop loading.
  * @param {Electron.WebviewTag} webview
  */
-const show = webview => {
+export const show = webview => {
     const tab = tabForPage(webview)
     if (webview === currentPage()) {
         const loadingProgress = document.getElementById("loading-progress")
@@ -330,7 +329,7 @@ const show = webview => {
 }
 
 /** Initialize/load the favicon cache in memory and register event handlers. */
-const init = async() => {
+export const init = async() => {
     faviconFolder = joinPath(await appData(), "favicons")
     mappingFile = joinPath(faviconFolder, "mappings")
     const parsed = await readJSON(mappingFile)
@@ -345,7 +344,7 @@ const init = async() => {
         }
     }
     isParsed = true
-    const {ipcRenderer} = require("electron")
+    const {ipcRenderer} = await import("electron")
     ipcRenderer.on("favicon-downloaded", (_, linkId, currentUrl, favicon) => {
         const webview = listPages().find(
             p => p.getAttribute("link-id") === linkId)
@@ -363,15 +362,4 @@ const init = async() => {
         mappings.redirects ||= {}
         mappings.redirects[src] = redirect
     })
-}
-
-module.exports = {
-    copyMapping,
-    forSite,
-    getRedirect,
-    init,
-    loading,
-    show,
-    update,
-    updateMappings
 }

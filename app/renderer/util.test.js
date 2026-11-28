@@ -15,13 +15,12 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
-const assert = require("node:assert")
-const {describe, test} = require("node:test")
-const {isUrl} = require("./util")
+import {strictEqual} from "node:assert"
+import {describe, test} from "node:test"
+import {isUrl} from "./util.js"
 
-describe("Check isUrl", () => {
+await describe("Check isUrl", async() => {
     const urlTests = [
         {
             "reason": "Valid url without www.",
@@ -253,8 +252,8 @@ describe("Check isUrl", () => {
         }
     ]
     for (const urlTest of urlTests) {
-        test(`Testing "${urlTest.url}": ${urlTest.reason}`, async() => {
-            assert.strictEqual(await isUrl(urlTest.url), urlTest.valid)
+        await test(`Testing "${urlTest.url}": ${urlTest.reason}`, async() => {
+            strictEqual(await isUrl(urlTest.url), urlTest.valid)
         })
     }
 })

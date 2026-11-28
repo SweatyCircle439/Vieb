@@ -15,11 +15,10 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
-const {ipcRenderer} = require("electron")
-const {formatDate, getAppRootDir, joinPath, urlToString} = require("../util")
-const {getSetting, translate} = require("./util")
+import {ipcRenderer} from "electron"
+import {formatDate, getAppRootDir, joinPath, urlToString} from "../util.js"
+import {getSetting, translate} from "./util.js"
 
 let currentlyRemoving = false
 let virtualList = document.createElement("div")
@@ -58,13 +57,13 @@ const updateCurrentView = async(user = true) => {
                 const el = original.cloneNode(true)
                 const url = el.querySelector("a")?.getAttribute("href")
                 const date = el.querySelector(".hist-date")?.getAttribute("iso")
-                el.querySelector(".trash")?.addEventListener("click", () => {
-                    original.classList.add("marked")
-                    updateCurrentView()
-                    ipcRenderer.sendToHost("history-list-request", "range", [{
-                        date, url
-                    }])
-                })
+                el.querySelector(".trash")?.addEventListener(
+                    "click", async() => {
+                        original.classList.add("marked")
+                        await updateCurrentView()
+                        ipcRenderer.sendToHost("history-list-request",
+                            "range", [{date, url}])
+                    })
                 return el
             })
         if (elements.length === 0) {
@@ -87,9 +86,9 @@ const updateCurrentView = async(user = true) => {
         const pageEl = document.createElement("button")
         pageEl.setAttribute("page-number", `${page}`)
         pageEl.textContent = `${page}`
-        pageEl.addEventListener("click", () => {
+        pageEl.addEventListener("click", async() => {
             viewIndex = (page - 1) * viewItemCount
-            updateCurrentView()
+            await updateCurrentView()
         })
         pages.append(pageEl)
     }
@@ -107,7 +106,7 @@ const updateCurrentView = async(user = true) => {
 /**
  * Add a single history entry to the list.
  * @param {(
- *   import("../renderer/history").historyItem
+ *   import("../renderer/history.js").historyItem
  * )} hist
  */
 const addHistToList = async hist => {
@@ -141,9 +140,9 @@ const addHistToList = async hist => {
 
 /**
  * Show the received history in a list.
- * @param {import("../renderer/history").historyItem[]} history
+ * @param {import("../renderer/history.js").historyItem[]} history
  */
-const receiveHistory = history => {
+const receiveHistory = async history => {
     const removeAllEl = document.getElementById("remove-all")
     const scanningProgress = document.getElementById("scanning-progress")
     if (!removeAllEl || !scanningProgress) {
@@ -153,7 +152,7 @@ const receiveHistory = history => {
     removeAllEl.style.display = "none"
     virtualList = document.createElement("div")
     if (history.length === 0) {
-        updateCurrentView(false)
+        await updateCurrentView(false)
         return
     }
     removeAllEl.style.display = ""
@@ -161,7 +160,7 @@ const receiveHistory = history => {
     let lineNumber = 0
     /**
      * Add an item to the history list on a timeout based on previous duration.
-     * @param {import("../renderer/history").historyItem} hist
+     * @param {import("../renderer/history.js").historyItem} hist
      */
     const addHistTimeout = hist => {
         setTimeout(async() => {
@@ -169,7 +168,7 @@ const receiveHistory = history => {
             lineNumber += 1
             if (goal === lineNumber) {
                 scanningProgress.style.display = "none"
-                updateCurrentView(false)
+                await updateCurrentView(false)
                 return
             }
             scanningProgress.textContent = await translate(
@@ -181,7 +180,7 @@ const receiveHistory = history => {
                 max = 100
             }
             if (lineNumber % max === 1) {
-                updateCurrentView(false)
+                await updateCurrentView(false)
             }
             addHistTimeout(history[lineNumber])
         }, 0)
@@ -192,7 +191,7 @@ const receiveHistory = history => {
 /**
  * Clear the history from specific lines by startl index and optionally end.
  */
-const clearHistory = () => {
+const clearHistory = async() => {
     if (currentlyRemoving) {
         return
     }
@@ -222,7 +221,7 @@ const clearHistory = () => {
         }
         return null
     }).filter(Boolean)
-    updateCurrentView()
+    await updateCurrentView()
     ipcRenderer.sendToHost("history-list-request", "range", entries)
 }
 
@@ -253,9 +252,9 @@ window.addEventListener("DOMContentLoaded", async() => {
     removeAll.src = joinPath(getAppRootDir(), "img/trash.png")
     removeAll.addEventListener("click", () => clearHistory())
     document.body.insertBefore(removeAll, document.body.firstChild)
-    document.getElementById("filter")?.addEventListener("input", () => {
+    document.getElementById("filter")?.addEventListener("input", async() => {
         viewIndex = 0
-        updateCurrentView()
+        await updateCurrentView()
     })
     const perpage = document.getElementById("perpage")
     perpage?.addEventListener("input", async() => {
@@ -268,12 +267,12 @@ window.addEventListener("DOMContentLoaded", async() => {
         } else {
             viewItemCount = count
         }
-        updateCurrentView()
+        await updateCurrentView()
     })
     ipcRenderer.sendToHost("history-list-request")
 })
 ipcRenderer.on("history-list", (_, h) => receiveHistory(h))
-ipcRenderer.on("history-removal-status", success => {
+ipcRenderer.on("history-removal-status", async success => {
     for (const m of virtualList.querySelectorAll(".marked")) {
         if (success) {
             m.remove()
@@ -282,5 +281,5 @@ ipcRenderer.on("history-removal-status", success => {
         }
     }
     currentlyRemoving = false
-    updateCurrentView()
+    await updateCurrentView()
 })

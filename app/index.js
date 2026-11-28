@@ -15,9 +15,8 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
-const {
+import {
     app,
     BrowserWindow,
     clipboard,
@@ -32,10 +31,10 @@ const {
     session,
     shell,
     webContents
-} = require("electron")
-const {randomUUID} = require("node:crypto")
-const {translate, updateLang} = require("./translate")
-const {
+} from "electron"
+import {randomUUID} from "node:crypto"
+import {translate, updateLang} from "./translate.js"
+import {
     basePath,
     defaultUseragent,
     deleteFile,
@@ -50,21 +49,16 @@ const {
     isFlatStringObject,
     joinPath,
     listDir,
-    listDirSync,
     makeDir,
     readFile,
-    readFileSync,
     readJSON,
-    readJSONSync,
     rm,
     specialChars,
     userAgentResolvedSystem,
     watchFile,
     writeFile,
-    writeFileSync,
-    writeJSON,
-    writeJSONSync
-} = require("./util")
+    writeJSON
+} from "./util.js"
 
 const version = process.env.npm_package_version || app.getVersion()
 app.setDesktopName("com.github.Jelmerro.Vieb")
@@ -440,7 +434,7 @@ if (urls.length > 0 && argExecute) {
  * @param {string} prefFile
  * @param {boolean} undock
  */
-const applyDevtoolsSettings = (prefFile, undock = true) => {
+const applyDevtoolsSettings = async(prefFile, undock = true) => {
     makeDir(dirname(prefFile))
     /**
      * @type {Partial<{electron: {devtools?: {preferences?: {
@@ -452,9 +446,9 @@ const applyDevtoolsSettings = (prefFile, undock = true) => {
      *   jsSourceMapsEnabled?: "true"|"false",
      *   "ui-theme"?: `"dark"`|`"light"`|`"system"`,
      *   uiTheme?: `"dark"`|`"light"`|`"system"`
-     * }}}}>&import("./util").PartialJSON}
+     * }}}}>&import("./util.js").PartialJSON}
      */
-    const preferences = readJSONSync(prefFile) ?? {}
+    const preferences = await readJSON(prefFile) ?? {}
     if (!("electron" in preferences)) {
         preferences.electron = {}
     }
@@ -484,7 +478,7 @@ const applyDevtoolsSettings = (prefFile, undock = true) => {
     }
     preferences.electron.devtools.preferences["ui-theme"] = theme
     preferences.electron.devtools.preferences.uiTheme = theme
-    writeJSONSync(prefFile, preferences)
+    await writeJSON(prefFile, preferences)
 }
 
 if (!argMediaKeys) {
@@ -493,14 +487,15 @@ if (!argMediaKeys) {
 app.commandLine.appendSwitch("enable-features", "SharedArrayBuffer")
 argDatafolder = `${joinPath(expandPath(argDatafolder.trim()))}/`
 const partitionDir = joinPath(argDatafolder, "Partitions")
-for (const part of listDirSync(partitionDir, false, true).filter(
-    p => p.startsWith("temp")).map(p => joinPath(partitionDir, p)) ?? []) {
+const partitionDirs = await listDir(partitionDir, false, true)
+for (const part of partitionDirs.filter(p => p.startsWith("temp"))
+    .map(p => joinPath(partitionDir, p)) ?? []) {
     rm(part)
 }
 rm(joinPath(argDatafolder, "erwicmode"))
 app.setPath("appData", argDatafolder)
 app.setPath("userData", argDatafolder)
-applyDevtoolsSettings(joinPath(argDatafolder, "Preferences"))
+await applyDevtoolsSettings(joinPath(argDatafolder, "Preferences"))
 if (argErwic) {
     argErwic = expandPath(argErwic)
     /**
@@ -508,9 +503,9 @@ if (argErwic) {
      *   name?: unknown, icon?: unknown, apps: {
      *     container?: unknown, script?: unknown, url?: unknown
      *   }[]
-     * }>&import("./util").PartialJSON}
+     * }>&import("./util.js").PartialJSON}
      */
-    const config = readJSONSync(argErwic) ?? {}
+    const config = await readJSON(argErwic) ?? {}
     if (!config) {
         console.warn("Erwic config file could not be read\n")
         printUsage()
@@ -533,7 +528,7 @@ if (argErwic) {
             }
         }
     }
-    writeFileSync(joinPath(argDatafolder, "erwicmode"), "")
+    await writeFile(joinPath(argDatafolder, "erwicmode"), "")
     if (!Array.isArray(config.apps)) {
         console.warn("Erwic config file requires a list of 'apps'\n")
         printUsage()
@@ -600,7 +595,7 @@ const currentInputMatches = key => {
 
 /**
  * Send a notification to the renderer thread.
- * @param {import("./renderer/util").NotificationInfo} opts
+ * @param {import("./renderer/util.js").NotificationInfo} opts
  */
 const notify = opts => mainWindow?.webContents.send("notify", opts)
 
@@ -887,7 +882,7 @@ const permissionHandler = (_, pm, callback, details) => {
 let navHistoryToRestore = null
 const minWindowSize = 500
 app.whenReady().then(async() => {
-    app.userAgentFallback = defaultUseragent()
+    app.userAgentFallback = await defaultUseragent()
     const executeOut = joinPath(app.getPath("appData"), ".tmp-execute-output")
     deleteFile(executeOut)
     if (!argUnsafeMultiwin) {
@@ -961,7 +956,7 @@ app.whenReady().then(async() => {
     }
     try {
         // @ts-expect-error Only present for the Castlabs Widevine project.
-        const {components} = require("electron")
+        const {components} = await import("electron")
         await components.whenReady()
         DRM = true
     } catch {
@@ -972,7 +967,7 @@ app.whenReady().then(async() => {
     app.on("open-url", (_, url) => mainWindow?.webContents.send("urls",
         resolveLocalPaths([url])))
     if (!app.isPackaged && !customIcon) {
-        customIcon = joinPath(__dirname, "img/vieb.svg")
+        customIcon = joinPath(import.meta.dirname, "img/vieb.svg")
     }
     // Init mainWindow
     /** @type {Electron.BrowserWindowConstructorOptions} */
@@ -984,7 +979,7 @@ app.whenReady().then(async() => {
         "title": app.getName(),
         "webPreferences": {
             "contextIsolation": false,
-            "preload": joinPath(__dirname, "renderer/index.js"),
+            "preload": joinPath(import.meta.dirname, "renderer/index.mjs"),
             "sandbox": false,
             "webviewTag": true
         },
@@ -1072,7 +1067,7 @@ app.whenReady().then(async() => {
         }
         navHistoryToRestore = null
     })
-    await mainWindow.loadURL(`file://${joinPath(__dirname, "index.html")}`)
+    await mainWindow.loadURL(`file://${joinPath(import.meta.dirname, "index.html")}`)
 }).catch(() => null)
 // Handle Basic HTTP login attempts
 /** @type {number[]} */
@@ -1105,7 +1100,7 @@ app.on("login", async(e, contents, _, auth, callback) => {
             "show": false,
             "webPreferences": {
                 "partition": "login",
-                "preload": joinPath(__dirname, "popups/login.js"),
+                "preload": joinPath(import.meta.dirname, "popups/login.mjs"),
                 "sandbox": false
             }
         }
@@ -1114,7 +1109,7 @@ app.on("login", async(e, contents, _, auth, callback) => {
         }
         loginWindow = new BrowserWindow(loginWindowData)
         const loginPage = `file:///${joinPath(
-            __dirname, "pages/loginpopup.html")}`
+            import.meta.dirname, "pages/loginpopup.html")}`
         await loginWindow.loadURL(loginPage)
         loginWindow.on("close", ev => {
             ev.preventDefault()
@@ -1184,7 +1179,8 @@ ipcMain.on("show-notification", async(_, escapedMessage, properType) => {
             "show": false,
             "webPreferences": {
                 "partition": "notification-window",
-                "preload": joinPath(__dirname, "popups/notification.js"),
+                "preload": joinPath(import.meta.dirname,
+                    "popups/notification.mjs"),
                 "sandbox": false
             }
         }
@@ -1193,7 +1189,7 @@ ipcMain.on("show-notification", async(_, escapedMessage, properType) => {
         }
         notificationWindow = new BrowserWindow(notificationWindowData)
         const notificationPage = `file:///${joinPath(
-            __dirname, "pages/notificationpopup.html")}`
+            import.meta.dirname, "pages/notificationpopup.html")}`
         await notificationWindow.loadURL(notificationPage)
         notificationWindow.on("close", e => {
             e.preventDefault()
@@ -1244,7 +1240,7 @@ ipcMain.on("show-prompt-dialog", async(e, title, defaultText) => {
             "show": false,
             "webPreferences": {
                 "partition": "prompt",
-                "preload": joinPath(__dirname, "popups/prompt.js"),
+                "preload": joinPath(import.meta.dirname, "popups/prompt.mjs"),
                 "sandbox": false
             }
         }
@@ -1253,7 +1249,7 @@ ipcMain.on("show-prompt-dialog", async(e, title, defaultText) => {
         }
         promptWindow = new BrowserWindow(promptWindowData)
         const promptPage = `file:///${joinPath(
-            __dirname, "pages/promptpopup.html")}`
+            import.meta.dirname, "pages/promptpopup.html")}`
         await promptWindow.loadURL(promptPage)
     }
     ipcMain.removeAllListeners("prompt-response")
@@ -1304,7 +1300,7 @@ const dlsFile = joinPath(app.getPath("appData"), "dls")
  *   downloadpath: string,
  *   cleardownloadsonquit?: boolean,
  *   cleardownloadsoncompleted?: boolean,
- *   src?: import("./renderer/util").RunSource
+ *   src?: import("./renderer/util.js").RunSource
  * }}
  */
 let downloadSettings = {"downloadpath": app.getPath("downloads")}
@@ -1341,12 +1337,13 @@ let resourcesBlocked = []
 /** @type {{[key: string]: string}} */
 let requestHeaders = {}
 /** @type {"windows"|"linux"|"mac"} */
-let currentUserAgentResolvedSystem = userAgentResolvedSystem()
+let currentUserAgentResolvedSystem = await userAgentResolvedSystem()
 /** @type {string[]} */
 const sessionList = []
-const adblockerPreload = joinPath(__dirname,
+const adblockerPreload = joinPath(import.meta.dirname,
     "../node_modules/@ghostery/adblocker-electron-preload/dist/index.cjs")
-const defaultCSS = readFileSync(joinPath(__dirname, `colors/default.css`))
+const defaultCSS = await readFile(joinPath(
+    import.meta.dirname, `colors/default.css`))
 ipcMain.on("set-redirects", (_, rdr) => {
     redirects = rdr
 })
@@ -1379,7 +1376,7 @@ const cancellAllDownloads = () => {
 
 /**
  * Check if an element in the download file is actually a download info object.
- * @param {import("./util").PartialJSON|undefined} d
+ * @param {import("./util.js").PartialJSON|undefined} d
  * @returns {d is DownloadItem}
  */
 const isDownloadObject = d => {
@@ -1397,7 +1394,7 @@ const isDownloadObject = d => {
  *   downloadpath: string,
  *   cleardownloadsonquit: boolean,
  *   cleardownloadsoncompleted: boolean,
- *   src: import("./renderer/util").RunSource
+ *   src: import("./renderer/util.js").RunSource
  * }} settings
  */
 const setDownloadSettings = async(_, settings) => {
@@ -1405,7 +1402,9 @@ const setDownloadSettings = async(_, settings) => {
         if (settings.cleardownloadsonquit) {
             deleteFile(dlsFile)
         } else if (isFile(dlsFile)) {
-            /** @type {Partial<DownloadItem[]>|import("./util").PartialJSON} */
+            /**
+             * @type {Partial<DownloadItem[]>|import("./util.js").PartialJSON}
+             */
             const downloadsFile = await readJSON(dlsFile) ?? []
             if (Array.isArray(downloadsFile)) {
                 downloads = downloadsFile.filter(v => isDownloadObject(v))
@@ -1574,7 +1573,7 @@ const reloadAdblocker = async() => {
     }
     let ElectronBlocker = null
     try {
-        ({ElectronBlocker} = require("@ghostery/adblocker-electron"))
+        ({ElectronBlocker} = await import("@ghostery/adblocker-electron"))
     } catch {
         // Adblocker module not present, skipping initialization
     }
@@ -1602,7 +1601,7 @@ const reloadAdblocker = async() => {
     const unique = [...new Set(filters.split("\n"))].join("\n")
     blocker = ElectronBlocker.parse(unique)
     const resources = await readFile(joinPath(
-        __dirname, `./blocklists/resources`))
+        import.meta.dirname, `./blocklists/resources`))
     if (resources) {
         blocker.updateResources(resources, `${resources.length}`)
     }
@@ -1677,7 +1676,7 @@ const enableAdblocker = async type => {
     /** @type {{[property: string]: string}} */
     let blocklists = {}
     const blocklistFileData = await readJSON(joinPath(
-        __dirname, "blocklists/list.json"))
+        import.meta.dirname, "blocklists/list.json"))
     if (isFlatStringObject(blocklistFileData)) {
         blocklists = blocklistFileData
     }
@@ -1685,7 +1684,7 @@ const enableAdblocker = async type => {
     // Copy the default and included blocklists to the appdata folder
     if (type !== "custom") {
         for (const name of Object.keys(blocklists)) {
-            const list = joinPath(__dirname, `blocklists/${name}.txt`)
+            const list = joinPath(import.meta.dirname, `blocklists/${name}.txt`)
             await writeFile(joinPath(blocklistDir, `${name}.txt`),
                 await readFile(list) ?? "")
         }
@@ -1739,7 +1738,7 @@ const handleDesktopCapture = async(request, callback, desktopSources) => {
             "show": false,
             "webPreferences": {
                 "partition": "display",
-                "preload": joinPath(__dirname, "popups/display.js"),
+                "preload": joinPath(import.meta.dirname, "popups/display.mjs"),
                 "sandbox": false
             }
         }
@@ -1748,7 +1747,7 @@ const handleDesktopCapture = async(request, callback, desktopSources) => {
         }
         displayWindow = new BrowserWindow(displayWindowData)
         const displayPage = `file:///${joinPath(
-            __dirname, "pages/displaypopup.html")}`
+            import.meta.dirname, "pages/displaypopup.html")}`
         await displayWindow.loadURL(displayPage)
     }
     ipcMain.removeAllListeners("display-response")
@@ -1920,15 +1919,15 @@ ipcMain.handle("create-session", async(_, name, adblock, cache) => {
     }
     const sessionDir = joinPath(partitionDir, encodeURIComponent(
         name.split(":", 2)[1] || name))
-    applyDevtoolsSettings(joinPath(sessionDir, "Preferences"), false)
+    await applyDevtoolsSettings(joinPath(sessionDir, "Preferences"), false)
     const newSess = session.fromPartition(name, {cache})
     newSess.setUserAgent(app.userAgentFallback)
     newSess.registerPreloadScript({
-        "filePath": joinPath(__dirname, "preload/index.js"),
+        "filePath": joinPath(import.meta.dirname, "preload/index.mjs"),
         "type": "service-worker"
     })
     newSess.registerPreloadScript({
-        "filePath": joinPath(__dirname, "preload/index.js"),
+        "filePath": joinPath(import.meta.dirname, "preload/index.mjs"),
         "type": "frame"
     })
     newSess.setPermissionRequestHandler(permissionHandler)
@@ -2193,7 +2192,7 @@ ipcMain.handle("create-session", async(_, name, adblock, cache) => {
         /** @type {import("highlight.js").HLJSApi|null} */
         let hljs = null
         try {
-            hljs = require("highlight.js").default
+            hljs = (await import("highlight.js")).default
         } catch {
             return new Response(Buffer.from(`<!DOCTPYE html>\n<html><head>
                 <style id="default-styling">${defaultCSS}</style>
@@ -2289,7 +2288,7 @@ ipcMain.handle("create-session", async(_, name, adblock, cache) => {
         /** @type {typeof import("marked").Marked|null} */
         let Marked = null
         try {
-            ({Marked} = require("marked"))
+            ({Marked} = await import("marked"))
         } catch {
             return new Response(Buffer.from(`<!DOCTPYE html>\n<html><head>
                 <style id="default-styling">${defaultCSS}</style>
@@ -2306,8 +2305,8 @@ ipcMain.handle("create-session", async(_, name, adblock, cache) => {
         }
         let markedObj = new Marked()
         try {
-            const hljs = require("highlight.js").default
-            const {markedHighlight} = require("marked-highlight")
+            const hljs = (await import("highlight.js")).default
+            const {markedHighlight} = await import("marked-highlight")
             markedObj = new Marked(markedHighlight({
                 /**
                  * Highlight the code using highlight.js in the right language.
@@ -2360,7 +2359,7 @@ ipcMain.handle("create-session", async(_, name, adblock, cache) => {
         }
         markedObj.setOptions({"renderer": mdRenderer, "silent": true})
         try {
-            const {baseUrl} = require("marked-base-url")
+            const {baseUrl} = await import("marked-base-url")
             if (url.startsWith("file:")) {
                 let base = url.replace(/^file:\/\//, "")
                 if (base[1] === ":" && process.platform === "win32") {
@@ -2421,7 +2420,7 @@ ipcMain.handle("create-session", async(_, name, adblock, cache) => {
             request.end()
         })
     })
-    newSess.protocol.handle("readerview", req => {
+    newSess.protocol.handle("readerview", async req => {
         let loc = req.url.replace(/readerview:\/?\/?/g, "")
         if (process.platform !== "win32" && !loc.startsWith("/")) {
             loc = `/${loc}`
@@ -2441,8 +2440,8 @@ ipcMain.handle("create-session", async(_, name, adblock, cache) => {
         /** @type {typeof import("linkedom").parseHTML|null} */
         let parseHTML = null
         try {
-            ({Readability} = require("@mozilla/readability"))
-            const linkedom = require("linkedom")
+            ({Readability} = await import("@mozilla/readability"))
+            const linkedom = await import("linkedom")
             ;({parseHTML} = linkedom)
         } catch {
             return new Response(Buffer.from(`<!DOCTPYE html>\n<html><head>
@@ -2567,7 +2566,7 @@ const windowStateFile = joinPath(app.getPath("appData"), "windowstate")
 const saveWindowState = async(statesOnly = false) => {
     try {
         mainWindow?.webContents?.send("window-update-gui")
-        /** @type {Partial<WindowState>&import("./util").PartialJSON} */
+        /** @type {Partial<WindowState>&import("./util.js").PartialJSON} */
         const oldState = await readJSON(windowStateFile) ?? {}
         /** @type {Partial<WindowState>} */
         let state = {}
@@ -2607,7 +2606,7 @@ ipcMain.handle("window-state-init", async(_, restore) => {
     if (!mainWindow) {
         return
     }
-    /** @type {Partial<WindowState>&import("./util").PartialJSON} */
+    /** @type {Partial<WindowState>&import("./util.js").PartialJSON} */
     const bounds = await readJSON(windowStateFile) ?? {}
     if (restore.pos === "restore") {
         if (typeof bounds.x === "number" && typeof bounds.y === "number") {
@@ -2648,26 +2647,26 @@ ipcMain.handle("window-state-init", async(_, restore) => {
     mainWindow.on("unmaximize", saveWindowState)
     mainWindow.on("resize", () => {
         justResized = true
-        setTimeout(() => {
+        setTimeout(async() => {
             if (!justMoved) {
-                saveWindowState()
+                await saveWindowState()
             }
         }, 10)
-        setTimeout(() => {
+        setTimeout(async() => {
             justResized = false
-            saveWindowState()
+            await saveWindowState()
         }, 30)
     })
     mainWindow.on("move", () => {
         justMoved = true
-        setTimeout(() => {
+        setTimeout(async() => {
             if (!justResized) {
-                saveWindowState()
+                await saveWindowState()
             }
         }, 10)
-        setTimeout(() => {
+        setTimeout(async() => {
             justMoved = false
-            saveWindowState()
+            await saveWindowState()
         }, 30)
     })
 })
@@ -2706,12 +2705,12 @@ ipcMain.handle("list-spelllangs",
 ipcMain.handle("toggle-always-on-top", () => {
     mainWindow?.setAlwaysOnTop(!mainWindow?.isAlwaysOnTop())
 })
-ipcMain.handle("toggle-fullscreen", () => {
+ipcMain.handle("toggle-fullscreen", async() => {
     if (!mainWindow) {
         return
     }
     mainWindow.fullScreen = !mainWindow.fullScreen
-    saveWindowState(true)
+    await saveWindowState(true)
 })
 ipcMain.handle("insert-mode-blockers", (_, blockedMappings) => {
     blockedInsertMappings = blockedMappings
@@ -2778,9 +2777,9 @@ ipcMain.handle("list-navigation-history", (_, id) => {
 ipcMain.handle("restore-navigation-history", (_, history) => {
     navHistoryToRestore = history
 })
-ipcMain.handle("override-global-useragent", (_, globalUseragent, platform) => {
+ipcMain.handle("override-global-useragent", async(_, globalUA, platform) => {
     currentUserAgentResolvedSystem = platform
-    app.userAgentFallback = globalUseragent || defaultUseragent()
+    app.userAgentFallback = globalUA || await defaultUseragent()
     for (const ses of sessionList) {
         session.fromPartition(ses).setUserAgent(app.userAgentFallback)
     }
@@ -2793,7 +2792,11 @@ ipcMain.handle("app-config", () => ({
     "name": app.getName(),
     "order": argConfigOrder,
     "override": argConfigOverride,
-    version
+    "versions": {
+        "app": version,
+        "chrome": process.versions.chrome,
+        "electron": process.versions.electron
+    }
 }))
 ipcMain.handle("is-fullscreen", () => {
     if (!mainWindow) {
@@ -2838,7 +2841,7 @@ const errToMain = exception => {
     return null
 }
 
-/** @type {(import("./renderer/follow").FollowLink & {frameId: string})[]} */
+/** @type {(import("./renderer/follow.js").FollowLink & {frameId: string})[]} */
 let allLinks = []
 /**
  * @typedef {{
@@ -2953,7 +2956,7 @@ ipcMain.on("frame-details", handleFrameDetails)
  * Handle a follow mode response.
  * @param {Electron.IpcMainEvent} e
  * @param {(
- *   import("./renderer/follow").FollowLink & {frameId: string}
+ *   import("./renderer/follow.js").FollowLink & {frameId: string}
  * )[]} rawLinks
  */
 const handleFollowResponse = (e, rawLinks) => {

@@ -16,18 +16,15 @@
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 /* eslint-disable unicorn/prefer-object-iterable-methods */
-"use strict"
 
-const {
-    joinPath, listDirSync, readJSONSync, writeFileSync, writeJSONSync
-} = require("./app/util")
+import {joinPath, listDir, readJSON, writeFile, writeJSON} from "./app/util.js"
 
-const files = listDirSync(joinPath(__dirname, "app/translations"))
+const files = (await listDir(joinPath(import.meta.dirname, "app/translations")))
     .filter(f => f.endsWith(".json")).map(f => f.replace(/\.json$/, "")) ?? []
 const translations = {}
 for (const f of files) {
-    const contents = readJSONSync(joinPath(
-        __dirname, `app/translations/${f}.json`))
+    const contents = await readJSON(joinPath(import.meta.dirname,
+        `app/translations/${f}.json`))
     translations[f] = contents
 }
 
@@ -86,17 +83,18 @@ const numberOfFields = (lang, key) => {
 }
 
 /** Update the key list type file. */
-const types = () => {
+const types = async() => {
     const keyList = listKeys(translations.en).map(k => `    | "${k}"`)
     const output = `export type TranslationKeys =\n${keyList.join("\n")}\n`
-    writeFileSync("types/i18n.d.ts", output)
+    await writeFile("types/i18n.d.ts", output)
 }
 
 /** Write all new translations to disk in alphabetic order. */
-const writeTranslations = () => {
+const writeTranslations = async() => {
     for (const lang of Object.keys(translations)) {
-        const filePath = joinPath(__dirname, `app/translations/${lang}.json`)
-        writeJSONSync(filePath, translations[lang], {
+        const filePath = joinPath(import.meta.dirname,
+            `app/translations/${lang}.json`)
+        await writeJSON(filePath, translations[lang], {
             "indent": 4,
             /**
              * Re-create object values so that the order is alphabetic.
@@ -114,7 +112,7 @@ const writeTranslations = () => {
             }
         })
     }
-    types()
+    await types()
 }
 
 let args = process.argv.slice(1)
@@ -122,7 +120,7 @@ if (args[0].endsWith("i18n") || args[0].endsWith("i18n.js")) {
     args = args.slice(1)
 }
 if (args[0] === "types") {
-    types()
+    await types()
 }
 if (args[0] === "lint") {
     const enKeys = listKeys(translations.en)
@@ -165,8 +163,9 @@ if (args[0] === "addlang") {
         console.warn("Language already exists.")
         process.exit(1)
     }
-    const filePath = joinPath(__dirname, `app/translations/${lang}.json`)
-    writeJSONSync(filePath, translations.en, {
+    const filePath = joinPath(import.meta.dirname,
+        `app/translations/${lang}.json`)
+    await writeJSON(filePath, translations.en, {
         "indent": 4,
         /**
          * Replace string values with empty keys.
@@ -206,7 +205,7 @@ if (args[0] === "addkey") {
             obj[key.split(".").at(-1)] = ""
         }
     }
-    writeTranslations()
+    await writeTranslations()
 }
 if (args[0] === "removekey") {
     if (args.length !== 2) {
@@ -218,13 +217,13 @@ if (args[0] === "removekey") {
         let obj = translations[lang]
         for (const id of key.split(".").slice(0, -1)) {
             if (!obj[id]) {
-                return
+                process.exit(1)
             }
             obj = obj[id]
         }
         delete obj[key.split(".").at(-1)]
     }
-    writeTranslations()
+    await writeTranslations()
 }
 if (args[0] === "renamekey") {
     if (args.length !== 3) {
@@ -237,7 +236,7 @@ if (args[0] === "renamekey") {
         let obj = translations[lang]
         for (const id of oldKey.split(".").slice(0, -1)) {
             if (!obj[id]) {
-                return
+                process.exit(1)
             }
             obj = obj[id]
         }
@@ -262,7 +261,7 @@ if (args[0] === "renamekey") {
         }
         obj[newKey.split(".").at(-1)] = oldValues[lang]
     }
-    writeTranslations()
+    await writeTranslations()
 }
 if (!args[0]) {
     console.info("Please use one of the following subcommands:")

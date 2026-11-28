@@ -15,11 +15,12 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
-const {
+import {platform} from "node:os"
+import {
     appConfig,
     appData,
+    appendFile,
     expandPath,
     getAppRootDir,
     isDir,
@@ -31,7 +32,7 @@ const {
     readFile,
     rm,
     specialPagePath
-} = require("../util")
+} from "../util.js"
 
 /** @typedef {"execute"|"user"|"source"|"other"} RunSource */
 
@@ -71,25 +72,8 @@ let tabbarGuiTimer = null
 /** @type {notificationHistory} */
 const notificationHistory = []
 
-/**
- * Append data to a file.
- * @param {string} loc
- * @param {string|Buffer} data
- * @returns {Promise<boolean>} True if successful.
- */
-const appendFile = (loc, data) => new Promise(res => {
-    const {"appendFile": appendFileFS} = require("node:fs")
-    appendFileFS(loc, data, err => {
-        if (err) {
-            res(false)
-            return
-        }
-        res(true)
-    })
-})
-
 /** Get the current url input element if available. */
-const getUrl = () => {
+export const getUrl = () => {
     const url = document.getElementById("url")
     if (url instanceof HTMLInputElement) {
         return url
@@ -100,7 +84,7 @@ const getUrl = () => {
 /**
  * List all the open tabs.
  */
-const listTabs = () => {
+export const listTabs = () => {
     /** @type {HTMLSpanElement[]} */
     // @ts-expect-error query selector includes the span tag
     const tabs = [...document.querySelectorAll("#tabs > span[link-id]")]
@@ -110,7 +94,7 @@ const listTabs = () => {
 /**
  * List all the open pages, regular ones are webviews, suspended ones are divs.
  */
-const listPages = () => {
+export const listPages = () => {
     /** @type {(Electron.WebviewTag|HTMLDivElement)[]} */
     // @ts-expect-error pages should always be div or webview
     const pages = [...document.querySelectorAll("#pages > .webview")]
@@ -120,7 +104,7 @@ const listPages = () => {
 /**
  * List all the fake suspended div pages.
  */
-const listFakePages = () => {
+export const listFakePages = () => {
     const pages = [...document.querySelectorAll("#pages > .webview")]
     return pages.flatMap(p => {
         if (p instanceof HTMLDivElement) {
@@ -133,7 +117,7 @@ const listFakePages = () => {
 /**
  * List all the real unsuspended webview pages.
  */
-const listRealPages = () => {
+export const listRealPages = () => {
     /** @type {Electron.WebviewTag[]} */
     // @ts-expect-error query selector includes the webview tag
     const pages = [...document.querySelectorAll("#pages > webview")]
@@ -143,7 +127,7 @@ const listRealPages = () => {
 /**
  * List all the webview pages that have completed the dom setup.
  */
-const listReadyPages = () => {
+export const listReadyPages = () => {
     /** @type {Electron.WebviewTag[]} */
     // @ts-expect-error query selector includes the webview tag
     const pages = [...document.querySelectorAll("#pages > webview[dom-ready]")]
@@ -153,7 +137,7 @@ const listReadyPages = () => {
 /**
  * Get the current tab.
  */
-const currentTab = () => {
+export const currentTab = () => {
     /** @type {HTMLSpanElement|null} */
     const tab = document.getElementById("current-tab")
     return tab
@@ -162,7 +146,7 @@ const currentTab = () => {
 /**
  * Get the current page.
  */
-const currentPage = () => {
+export const currentPage = () => {
     /** @type {Electron.WebviewTag|null} */
     // @ts-expect-error current page id is always set to webview or null
     const page = document.getElementById("current-page")
@@ -174,8 +158,8 @@ const currentPage = () => {
  * @param {string} channel
  * @param {unknown[]} args
  */
-const sendToPageOrSubFrame = (channel, ...args) => {
-    const {ipcRenderer} = require("electron")
+export const sendToPageOrSubFrame = async(channel, ...args) => {
+    const {ipcRenderer} = await import("electron")
     ipcRenderer.send(channel, currentPage()?.getWebContentsId(), ...args)
 }
 
@@ -183,14 +167,14 @@ const sendToPageOrSubFrame = (channel, ...args) => {
  * Find a page for a given tab.
  * @param {HTMLSpanElement|null} tab
  */
-const pageForTab = tab => listPages().find(
+export const pageForTab = tab => listPages().find(
     e => tab && e.getAttribute("link-id") === tab.getAttribute("link-id"))
 
 /**
  * Find a tab for a given page.
  * @param {HTMLDivElement|Electron.WebviewTag|null} page
  */
-const tabForPage = page => listTabs().find(
+export const tabForPage = page => listTabs().find(
     e => page && e.getAttribute("link-id") === page.getAttribute("link-id"))
 
 /**
@@ -220,7 +204,7 @@ const isValidMode = mode => modes.has(mode)
 /**
  * Get the current mode.
  */
-const currentMode = () => {
+export const currentMode = () => {
     const mode = document.body.getAttribute("current-mode") ?? "normal"
     if (isValidMode(mode)) {
         return mode
@@ -229,8 +213,8 @@ const currentMode = () => {
 }
 
 /** Return the location of the downloads, either via setting or OS default. */
-const downloadPath = async() => {
-    const {getSetting} = require("./settings")
+export const downloadPath = async() => {
+    const {getSetting} = await import("./settings.js")
     const settingVal = getSetting("downloadpath")
     if (settingVal) {
         return expandPath(settingVal)
@@ -248,15 +232,16 @@ const downloadPath = async() => {
  *   stderr: string|Buffer
  * ) => Promise<void>} callback
  */
-const execCommand = (command, callback) => {
+export const execCommand = async(command, callback) => {
+    /** @type {string?} */
     let shell = null
-    if (process.platform === "win32") {
+    if (platform() === "win32") {
         shell = process.env.ComSpec || shell
     }
     shell = process.env.SHELL || shell
-    const {getSetting} = require("./settings")
+    const {getSetting} = await import("./settings.js")
     shell = getSetting("shell") || shell
-    const {exec} = require("node:child_process")
+    const {exec} = await import("node:child_process")
     if (shell) {
         return exec(command, {shell}, callback)
     }
@@ -267,8 +252,8 @@ const execCommand = (command, callback) => {
  * Match a searchword and return the word and filled url.
  * @param {string} location
  */
-const searchword = location => {
-    const {getSetting} = require("./settings")
+export const searchword = async location => {
+    const {getSetting} = await import("./settings.js")
     const searchwords = getSetting("searchwords")
     for (const [word, url] of Object.entries(searchwords)) {
         if (!(word && url)) {
@@ -296,7 +281,7 @@ const searchword = location => {
 
 /**
  * @typedef {{
- *   id: import("../../types/i18n").TranslationKeys,
+ *   id: import("../../types/i18n.d.ts").TranslationKeys,
  *   fields?: string[],
  *   action?: {
  *     type: "download-success",
@@ -313,14 +298,14 @@ const searchword = location => {
  * Show the user a notification bubble and store it in the history.
  * @param {NotificationInfo} opts
  */
-const notify = async opts => {
-    const {translate} = require("../translate")
+export const notify = async opts => {
+    const {translate} = await import("../translate.js")
     const message = translate(opts.id, {"fields": opts.fields ?? []})
     if (opts.src === "execute") {
         await appendFile(joinPath(await appData(),
             ".tmp-execute-output"), `${message}\t\t\t`).catch(console.warn)
     }
-    const {getSetting} = require("./settings")
+    const {getSetting} = await import("./settings.js")
     if (getSetting("notificationduration") === 0) {
         return
     }
@@ -372,7 +357,7 @@ const notify = async opts => {
         return
     }
     if (showLong) {
-        const {ipcRenderer} = require("electron")
+        const {ipcRenderer} = await import("electron")
         ipcRenderer.send("show-notification", message, properType)
         return
     }
@@ -394,7 +379,7 @@ const notify = async opts => {
 }
 
 /** Return the notification history. */
-const listNotificationHistory = () => notificationHistory
+export const listNotificationHistory = () => notificationHistory
 
 /**
  * Get the current gui status value depending on window status.
@@ -402,9 +387,9 @@ const listNotificationHistory = () => notificationHistory
  * @returns {Promise<"always"|"onupdate"|"oninput"|"never">}
  */
 const getGuiStatus = async type => {
-    const {getSetting} = require("./settings")
+    const {getSetting} = await import("./settings.js")
     let setting = getSetting(`gui${type}`)
-    const {ipcRenderer} = require("electron")
+    const {ipcRenderer} = await import("electron")
     if (await ipcRenderer.invoke("is-fullscreen")) {
         setting = getSetting(`guifullscreen${type}`)
     }
@@ -418,16 +403,15 @@ const getGuiStatus = async type => {
  * Check if any string has a valid protocol or dataUri.
  * @param {string} loc
  */
-const hasProtocol = loc => protocolRegex.test(loc)
+export const hasProtocol = loc => protocolRegex.test(loc)
     || dataUris.some(d => loc.startsWith(`${d}:`))
 
 /**
  * Check if any string is a valid url.
  * @param {string} location
  */
-const isUrl = async location => {
-    const {domainToASCII} = require("node:url")
-    const {getSetting} = require("./settings")
+export const isUrl = async location => {
+    const {domainToASCII} = await import("node:url")
     if (hasProtocol(location)) {
         try {
             const url = new URL(location)
@@ -462,8 +446,10 @@ const isUrl = async location => {
             cachedTldSet.add("onion")
         }
         if (cachedTldSet) {
-            const externalTlds = getSetting("externaltlds")
-                .map(v => v.toLowerCase())
+            const {getSetting} = await import("./settings.js")
+                .catch(() => null) ?? {}
+            const externalTlds = getSetting?.("externaltlds")
+                .map(v => v.toLowerCase()) ?? []
             if (!cachedTldSet.has(encoded) && !externalTlds.includes(encoded)) {
                 return false
             }
@@ -487,14 +473,14 @@ const isUrl = async location => {
  * Translate a string from the explore mode input to a valid url.
  * @param {string} location
  */
-const stringToUrl = location => {
+export const stringToUrl = async location => {
     let url = location
     const specialPage = pathToSpecialPageName(url)
     if (specialPage?.name) {
         return specialPagePath(specialPage.name, specialPage.section)
     }
     let fileName = url.replace(/^file:\/+/, "/")
-    if (process.platform === "win32") {
+    if (platform() === "win32") {
         fileName = url.replace(/^file:\/+/, "")
     }
     const local = expandPath(fileName)
@@ -502,8 +488,8 @@ const stringToUrl = location => {
         const escapedPath = local.replace(/\?/g, "%3F").replace(/#/g, "%23")
         url = `file:/${escapedPath}`.replace(/^file:\/+/, "file:///")
     }
-    if (!isUrl(url)) {
-        const {getSetting} = require("./settings")
+    if (!await isUrl(url)) {
+        const {getSetting} = await import("./settings.js")
         const engines = getSetting("searchengine")
         const engine = engines.at(Math.random() * engines.length)
         if (!engine) {
@@ -523,7 +509,7 @@ const stringToUrl = location => {
 }
 
 /** Update the GUI visibility based on navbar and tabbar settings. */
-const updateGuiVisibility = async() => {
+export const updateGuiVisibility = async() => {
     const navbar = await getGuiStatus("navbar")
     const tabbar = await getGuiStatus("tabbar")
     if (!navbarGuiTimer) {
@@ -534,11 +520,11 @@ const updateGuiVisibility = async() => {
     if (!tabbarGuiTimer) {
         document.body.classList.toggle("tabshidden", tabbar !== "always")
     }
-    const {applyLayout} = require("./pagelayout")
+    const {applyLayout} = await import("./pagelayout.js")
     applyLayout()
     if (currentMode() === "pointer") {
-        const {updateElement} = require("./pointer")
-        updateElement()
+        const {updateElement} = await import("./pointer.js")
+        await updateElement()
     }
 }
 
@@ -546,7 +532,7 @@ const updateGuiVisibility = async() => {
  * Update the mouse state to reflect if it's at the top of the page or not.
  * @param {boolean} status
  */
-const setTopOfPageWithMouse = async status => {
+export const setTopOfPageWithMouse = async status => {
     if (topOfPageWithMouse === status) {
         return
     }
@@ -558,7 +544,7 @@ const setTopOfPageWithMouse = async status => {
  * Update the screenshot highlight visibility and position, or hide it.
  * @param {boolean} hide
  */
-const updateScreenshotHighlight = (hide = false) => {
+export const updateScreenshotHighlight = (hide = false) => {
     const url = getUrl()
     const dims = url?.value.split(" ").find(
         arg => arg?.match(/^(?:\d+,){3}\d+$/g))
@@ -608,9 +594,9 @@ const updateScreenshotHighlight = (hide = false) => {
  * Update the GUI to briefly show it again if configured.
  * @param {"navbar"|"tabbar"} type
  */
-const guiRelatedUpdate = async type => {
+export const guiRelatedUpdate = async type => {
     await updateGuiVisibility()
-    const {getSetting} = require("./settings")
+    const {getSetting} = await import("./settings.js")
     const timeout = getSetting("guihidetimeout")
     if (type === "navbar" && await getGuiStatus("navbar") === "onupdate") {
         clearTimeout(navbarGuiTimer ?? undefined)
@@ -635,7 +621,7 @@ const guiRelatedUpdate = async type => {
 }
 
 /** Return the position and dimensions of the page container. */
-const pageContainerPos = () => {
+export const pageContainerPos = () => {
     const pagelayout = document.getElementById("page-container")
     if (!pagelayout) {
         return {"bottom": 0, "left": 0, "right": 0, "top": 0}
@@ -647,7 +633,7 @@ const pageContainerPos = () => {
  * Calculate the offset in pixels for each dimension of an element.
  * @param {HTMLElement} page
  */
-const pageOffset = page => {
+export const pageOffset = page => {
     const border = propPixels(page, "border-width")
     const top = Math.round(propPixels(page.style, "top") + border)
     const left = Math.round(propPixels(page.style, "left") + border)
@@ -661,7 +647,9 @@ const pageOffset = page => {
  * @param {string} value
  * @param {boolean} invertedRangesSupported
  */
-const isValidIntervalValue = (value, invertedRangesSupported = false) => {
+export const isValidIntervalValue = (
+    value, invertedRangesSupported = false
+) => {
     const validUnits = ["second", "minute", "hour", "day", "month", "year"]
     for (const unit of validUnits) {
         if (value.endsWith(unit) || value.endsWith(`${unit}s`)) {
@@ -679,7 +667,7 @@ const isValidIntervalValue = (value, invertedRangesSupported = false) => {
  * Convert an interval to a date relative to the current date.
  * @param {string} value
  */
-const intervalValueToDate = value => {
+export const intervalValueToDate = value => {
     const date = new Date()
     if (value.includes("second")) {
         date.setSeconds(date.getSeconds() - Number(value.replace(/[a-z]/g, "")))
@@ -704,7 +692,7 @@ const intervalValueToDate = value => {
 }
 
 /** Clear all temporary containers (those that start with temp) from disk. */
-const clearTempContainers = async() => {
+export const clearTempContainers = async() => {
     const partitionDir = joinPath(await appData(), "Partitions")
     const dirfiles = await listDir(partitionDir, false, true)
     for (const partition of dirfiles.filter(part => part.startsWith("temp"))
@@ -715,7 +703,7 @@ const clearTempContainers = async() => {
 }
 
 /** Clear the Chromium and Electron cache dirs plus the Vieb cache files. */
-const clearCache = async() => {
+export const clearCache = async() => {
     const partitionDir = joinPath(await appData(), "Partitions")
     const partitions = [
         await appData(), ...await listDir(partitionDir, true, true)
@@ -748,7 +736,7 @@ const clearCache = async() => {
 }
 
 /** Claer all cookies, including those inside partition dirs. */
-const clearCookies = async() => {
+export const clearCookies = async() => {
     const partitionDir = joinPath(await appData(), "Partitions")
     const partitions = [
         await appData(), ...await listDir(partitionDir, true, true)
@@ -770,7 +758,7 @@ const clearCookies = async() => {
 }
 
 /** Claer all localstorage, including that inside partition dirs. */
-const clearLocalStorage = async() => {
+export const clearLocalStorage = async() => {
     const partitionDir = joinPath(await appData(), "Partitions")
     const partitions = [
         await appData(), ...await listDir(partitionDir, true, true)
@@ -790,40 +778,4 @@ const clearLocalStorage = async() => {
             rm(joinPath(part, node))
         }
     }
-}
-
-module.exports = {
-    appendFile,
-    clearCache,
-    clearCookies,
-    clearLocalStorage,
-    clearTempContainers,
-    currentMode,
-    currentPage,
-    currentTab,
-    downloadPath,
-    execCommand,
-    getUrl,
-    guiRelatedUpdate,
-    hasProtocol,
-    intervalValueToDate,
-    isUrl,
-    isValidIntervalValue,
-    listFakePages,
-    listNotificationHistory,
-    listPages,
-    listReadyPages,
-    listRealPages,
-    listTabs,
-    notify,
-    pageContainerPos,
-    pageForTab,
-    pageOffset,
-    searchword,
-    sendToPageOrSubFrame,
-    setTopOfPageWithMouse,
-    stringToUrl,
-    tabForPage,
-    updateGuiVisibility,
-    updateScreenshotHighlight
 }

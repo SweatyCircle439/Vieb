@@ -15,11 +15,10 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
-const {ipcRenderer} = require("electron")
-const {getSetting} = require("./settings")
-const {
+import {ipcRenderer} from "electron"
+import {getMouseConf, getSetting} from "./settings.js"
+import {
     currentMode,
     currentPage,
     currentTab,
@@ -27,7 +26,7 @@ const {
     hasProtocol,
     isUrl,
     sendToPageOrSubFrame
-} = require("./util")
+} from "./util.js"
 
 /**
  * @typedef {object} FollowLink
@@ -51,7 +50,7 @@ let links = []
 const savedOrder = [
     "image", "media", "url", "onclick", "inputs-click", "inputs-insert"
 ]
-/** @type {import("./util").Mode} */
+/** @type {import("./util.js").Mode} */
 let modeBeforeFollow = "normal"
 
 /**
@@ -87,7 +86,7 @@ const informPreload = (first = false) => {
  * Start follow mode and open links at the provided location once done.
  * @param {"current"|"newtab"|"copylink"|"hor"|"ver"} dest
  */
-const startFollow = async(dest = followLinkDestination) => {
+export const startFollow = async(dest = followLinkDestination) => {
     followLinkDestination = dest || "current"
     const followEl = document.getElementById("follow")
     if (!followEl) {
@@ -98,7 +97,7 @@ const startFollow = async(dest = followLinkDestination) => {
     if (!["follow", "insert"].includes(mode)) {
         modeBeforeFollow = mode
     }
-    const {setMode} = require("./modes")
+    const {setMode} = await import("./modes.js")
     await setMode("follow")
     alreadyFollowing = false
     alreadyFilteringLinks = false
@@ -108,8 +107,8 @@ const startFollow = async(dest = followLinkDestination) => {
 }
 
 /** Request to stop follow mode and return to the mode used before follow. */
-const stopFollow = async() => {
-    const {setMode} = require("./modes")
+export const stopFollow = async() => {
+    const {setMode} = await import("./modes.js")
     if (currentMode() === "follow") {
         await setMode(modeBeforeFollow || "normal")
     } else {
@@ -118,7 +117,7 @@ const stopFollow = async() => {
 }
 
 /** Cancel follow mode mode by clearing the links and stopping the loop. */
-const cancelFollow = () => {
+export const cancelFollow = () => {
     alreadyFollowing = false
     alreadyFilteringLinks = false
     hoverLink = null
@@ -196,23 +195,23 @@ const linkInList = (list, link) => list.some(l => l && link && l.x === link.x
 /**
  * Click on a follow link.
  * @param {FollowLink} link
- * @param {import("./util").RunSource} src
+ * @param {import("./util.js").RunSource} src
  */
 const clickAtLink = async(link, src = "user") => {
     const factor = currentPage()?.getZoomFactor() ?? 1
-    const {setMode} = require("./modes")
+    const {setMode} = await import("./modes.js")
     if (["pointer", "visual"].includes(modeBeforeFollow)) {
-        const {move, start} = require("./pointer")
+        const {move, start} = await import("./pointer.js")
         await start()
         if (modeBeforeFollow === "visual") {
             await setMode("visual")
         }
-        move((link.x + link.width / 2) * factor,
+        await move((link.x + link.width / 2) * factor,
             (link.y + link.height / 2) * factor)
         return
     }
     if (link.url && link.type === "url" && await isUrl(link.url)) {
-        const {navigateTo} = require("./tabs")
+        const {navigateTo} = await import("./tabs.js")
         await navigateTo(src, link.url)
         return
     }
@@ -221,10 +220,10 @@ const clickAtLink = async(link, src = "user") => {
         setTimeout(r, 2)
     })
     if (link.type === "inputs-insert") {
-        sendToPageOrSubFrame("focus-input",
+        await sendToPageOrSubFrame("focus-input",
             {"x": link.x + link.width / 2, "y": link.y + link.height / 2})
     } else {
-        sendToPageOrSubFrame("send-input-event", {
+        await sendToPageOrSubFrame("send-input-event", {
             "type": "click",
             "x": (link.x + link.width / 2) * factor,
             "y": (link.y + link.height / 2) * factor
@@ -276,13 +275,13 @@ const applyIndexedOrder = () => {
 }
 
 /** Rotate the display order of follow links by type. */
-const reorderDisplayedLinks = () => {
+export const reorderDisplayedLinks = () => {
     savedOrder.push(savedOrder.shift() ?? "")
     applyIndexedOrder()
 }
 
 /** Hide and clear the current hover link. */
-const emptyHoverLink = () => {
+export const emptyHoverLink = () => {
     hoverLink = null
     if (alreadyFollowing) {
         for (const el of document.querySelectorAll(`#follow .hover`)) {
@@ -308,14 +307,13 @@ const getWritableDOMRect = el => {
  * @param {FollowLink} link
  */
 const onclickListener = async(e, link) => {
-    const {getMouseConf} = require("./settings")
     if (!getMouseConf("follow")) {
         return
     }
-    const {setMode} = require("./modes")
+    const {setMode} = await import("./modes.js")
     if (e.button === 1 && link.type === "url" && await isUrl(link.url)) {
         await setMode(modeBeforeFollow)
-        const {addTab} = require("./tabs")
+        const {addTab} = await import("./tabs.js")
         await addTab({
             "src": "user",
             "switchTo": getSetting("mousenewtabswitch"),
@@ -340,7 +338,7 @@ const onclickListener = async(e, link) => {
  *   y: number,
  *   width: number,
  *   height: number,
- *   baseDims: import("../util").DOMRectJSON,
+ *   baseDims: import("../util.js").DOMRectJSON,
  *   elWidth: number,
  *   followlabelposition: string,
  *   linkElement: HTMLSpanElement
@@ -474,7 +472,7 @@ const parseAndDisplayLinks = async receivedLinks => {
     if (!followEl || !page) {
         return
     }
-    const {updateUrl} = require("./tabs")
+    const {updateUrl} = await import("./tabs.js")
     await updateUrl(page, true)
     let newLinks = receivedLinks
     if (followLinkDestination !== "current") {
@@ -535,7 +533,6 @@ const parseAndDisplayLinks = async receivedLinks => {
         borderElement.style.height = `${height}px`
         borderElement.addEventListener("mouseup", e => onclickListener(e, link))
         borderElement.addEventListener("mousemove", () => {
-            const {getMouseConf} = require("./settings")
             if (!getMouseConf("follow")) {
                 hoverLink = null
                 borderElement.classList.remove("hover")
@@ -576,7 +573,6 @@ const parseAndDisplayLinks = async receivedLinks => {
         linkElement.setAttribute("link-id", `${index}`)
         linkElement.addEventListener("mouseup", e => onclickListener(e, link))
         linkElement.addEventListener("mousemove", () => {
-            const {getMouseConf} = require("./settings")
             if (!getMouseConf("follow")) {
                 hoverLink = null
                 borderElement.classList.remove("hover")
@@ -600,23 +596,23 @@ const parseAndDisplayLinks = async receivedLinks => {
 }
 
 /** Returns true if the follow links have been filtered via typing. */
-const followFiltering = () => alreadyFilteringLinks
+export const followFiltering = () => alreadyFilteringLinks
 
 /**
  * Enter a follow mode key and narrow down results.
- * @param {import("./util").RunSource} src
+ * @param {import("./util.js").RunSource} src
  * @param {string} code
  * @param {string} id
  * @param {boolean} stayInFollowMode
  */
-const enterKey = async(src, code, id, stayInFollowMode) => {
+export const enterKey = async(src, code, id, stayInFollowMode) => {
     alreadyFollowing = true
     /** @type {HTMLSpanElement[]} */
     // @ts-expect-error query selector only selects span elements
     const allLinkKeys = [...document.querySelectorAll("#follow span[link-id]")]
     const chars = followChars()
     const charsInLinks = chars.map(c => c.toLowerCase())
-    const {setMode} = require("./modes")
+    const {setMode} = await import("./modes.js")
     const fallbackAction = getSetting("followfallbackaction")
     const url = getUrl()
     if (!code || !charsInLinks.includes(code.toLowerCase())) {
@@ -630,7 +626,7 @@ const enterKey = async(src, code, id, stayInFollowMode) => {
             alreadyFilteringLinks = true
             url.value = ""
         }
-        const {typeCharacterIntoNavbar} = require("./input")
+        const {typeCharacterIntoNavbar} = await import("./input.js")
         await typeCharacterIntoNavbar(id, true)
         const filterText = url?.value.toLowerCase()
         /** @type {HTMLSpanElement[]} */
@@ -685,7 +681,7 @@ const enterKey = async(src, code, id, stayInFollowMode) => {
             if (stayInFollowMode) {
                 await startFollow()
             }
-            const {addTab} = require("./tabs")
+            const {addTab} = await import("./tabs.js")
             if (followLinkDestination === "newtab") {
                 await addTab({
                     src,
@@ -708,7 +704,7 @@ const enterKey = async(src, code, id, stayInFollowMode) => {
                     "url": link.url
                 })
                 const newTabId = newTab?.getAttribute("link-id") ?? ""
-                const {add} = require("./pagelayout")
+                const {add} = await import("./pagelayout.js")
                 const opposite = followLinkDestination === "ver"
                     && !getSetting("splitbelow")
                     || followLinkDestination === "hor"
@@ -732,18 +728,7 @@ const enterKey = async(src, code, id, stayInFollowMode) => {
 }
 
 /** Listen for mouse leave to clear hover and follow responses from preload. */
-const init = () => {
+export const init = () => {
     ipcRenderer.on("follow-response", (_, l) => parseAndDisplayLinks(l))
     document.addEventListener("mouseleave", () => emptyHoverLink())
-}
-
-module.exports = {
-    cancelFollow,
-    emptyHoverLink,
-    enterKey,
-    followFiltering,
-    init,
-    reorderDisplayedLinks,
-    startFollow,
-    stopFollow
 }

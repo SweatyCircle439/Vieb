@@ -15,19 +15,18 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
-const {appConfig, compareVersions} = require("../util")
-const {translate, translateAsHTML} = require("./util")
+import {appConfig, compareVersions} from "../util.js"
+import {translate, translateAsHTML} from "./util.js"
 
 const apiUrl = "https://api.github.com/repos/Jelmerro/Vieb/releases/latest"
 
 /** Check for updates to Vieb on button click via Github. */
 const checkForUpdates = async() => {
-    const {version} = await appConfig() ?? {}
+    const {versions} = await appConfig() ?? {}
     const versionCheck = document.getElementById("version-check")
     const button = document.querySelector("button")
-    if (!versionCheck || !button || !version) {
+    if (!versionCheck || !button || !versions) {
         return
     }
     versionCheck.textContent = await translate("pages.version.loading")
@@ -41,7 +40,7 @@ const checkForUpdates = async() => {
         if (req.status === 200) {
             try {
                 const release = JSON.parse(req.responseText)
-                const diff = compareVersions(version, release.tag_name)
+                const diff = compareVersions(versions.app, release.tag_name)
                 if (diff === "older") {
                     versionCheck.textContent = await translate(
                         "pages.version.newerFound",
@@ -86,7 +85,7 @@ window.addEventListener("DOMContentLoaded", async() => {
     }
     /**
      * @type {{
-     *   src: string, id: import("../../types/i18n").TranslationKeys
+     *   src: string, id: import("../../types/i18n.d.ts").TranslationKeys
      * }[]}
      */
     const versionLinks = [
@@ -113,6 +112,7 @@ window.addEventListener("DOMContentLoaded", async() => {
             "src": "github.com/Jelmerro/Vieb/discussions"
         }
     ]
+    const {icon, name, versions} = await appConfig() ?? {}
     const versionLinksEl = document.getElementById("version-links")
     if (versionLinksEl) {
         for (const link of versionLinks) {
@@ -126,11 +126,9 @@ window.addEventListener("DOMContentLoaded", async() => {
     if (descriptionEl) {
         descriptionEl.append(...await translateAsHTML(
             "pages.version.description", {"fields": [
-                process.versions.electron, process.versions.chrome
+                versions?.electron ?? "", versions?.chrome ?? ""
             ]}))
     }
-    // Regular init
-    const {icon, name, version} = await appConfig() ?? {}
     const nameEl = document.getElementById("name")
     if (nameEl) {
         nameEl.textContent = name ?? "Vieb"
@@ -141,7 +139,7 @@ window.addEventListener("DOMContentLoaded", async() => {
     }
     const versionEl = document.getElementById("version")
     if (versionEl) {
-        versionEl.textContent = version ?? ""
+        versionEl.textContent = versions?.app ?? ""
     }
     if (buttonEl) {
         buttonEl.addEventListener("click", checkForUpdates)

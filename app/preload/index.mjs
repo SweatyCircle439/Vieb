@@ -15,29 +15,28 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
 // Always load the misc action functions (such as scrolling before page loads)
-require("./actions")
+import "./actions.js"
 // Always load follow mode JavaScript
-require("./follow")
-const {pathToSpecialPageName} = require("../util")
+import "./follow.js"
+import {pathToSpecialPageName} from "../util.js"
 
 const specialPage = pathToSpecialPageName(window.location.href)
 const skipProtocols = ["sourceviewer:", "readerview:", "markdownviewer:"]
 if (specialPage?.name) {
     // Load the special page specific JavaScript
-    require(`./${specialPage.name}`)
+    await import(`./${specialPage.name}.js`)
 } else if (skipProtocols.every(p => !window.location.href.startsWith(p))) {
     // Load the failed page information handler for nonspecial pages
-    require("./failedload")
+    await import("./failedload.js")
     // Load the local directory browser for nonspecial pages
-    require("./filebrowser")
+    await import("./filebrowser.js")
     // Load the privacy related fixes for nonspecial pages
-    require("./privacy")
+    await import("./privacy.js")
     // Load optional plugins and extensions
-    require("./extensions")
+    await import("./extensions.js")
 }
 
 // Load the custom styling such as colors, fontsizes and darkreader
-require("./styling")
+import "./styling.js"

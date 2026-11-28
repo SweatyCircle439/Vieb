@@ -15,11 +15,10 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
-const {ipcRenderer} = require("electron")
-const {getAppRootDir, joinPath} = require("../util")
-const {translate} = require("./util")
+import {ipcRenderer} from "electron"
+import {getAppRootDir, joinPath} from "../util.js"
+import {translate} from "./util.js"
 
 /** Filter the cookie list based on the search query in the input box. */
 const filterList = async() => {
@@ -114,7 +113,7 @@ const refreshList = async() => {
         cookieElement.append(remove)
         listEl?.append(cookieElement)
     }
-    filterList()
+    await filterList()
 }
 
 /** Remove all cookies either based on filter or completely. */

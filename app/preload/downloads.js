@@ -15,13 +15,12 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
-const {ipcRenderer} = require("electron")
-const {
+import {ipcRenderer} from "electron"
+import {
     formatDate, formatSize, getAppRootDir, joinPath, urlToString
-} = require("../util")
-const {translate} = require("./util")
+} from "../util.js"
+import {translate} from "./util.js"
 
 let lastUpdate = new Date()
 
@@ -56,7 +55,7 @@ window.addEventListener("DOMContentLoaded", async() => {
 
 /**
  * Add a download to the list.
- * @param {import("../index").DownloadItem} download
+ * @param {import("../index.js").DownloadItem} download
  */
 const addDownload = async download => {
     const element = document.createElement("div")
@@ -147,7 +146,7 @@ const addDownload = async download => {
 
 /**
  * Update a download element with new data.
- * @param {import("../index").DownloadItem} download
+ * @param {import("../index.js").DownloadItem} download
  * @param {Element} element
  */
 const updateDownload = async(download, element) => {
@@ -251,7 +250,7 @@ const updateDownload = async(download, element) => {
  * @param {string} l
  */
 const generateDownloadList = async(_, l) => {
-    /** @type {import("../index").DownloadItem[]} */
+    /** @type {import("../index.js").DownloadItem[]} */
     const list = JSON.parse(l).toReversed()
     // List
     if (list.length === 0) {

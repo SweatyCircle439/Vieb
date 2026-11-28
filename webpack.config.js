@@ -1,21 +1,24 @@
-"use strict"
+import {join} from "node:path"
+import TerserPlugin from "terser-webpack-plugin"
 
-const {join} = require("node:path")
-const TerserPlugin = require("terser-webpack-plugin")
-
-module.exports = [{
+export default [{
     "entry": {
         "main": "./app/index.js",
-        "preload": "./app/preload/index.js",
-        "renderer": "./app/renderer/index.js"
+        "preload": "./app/preload/index.mjs",
+        "renderer": "./app/renderer/index.mjs"
     },
     "externals": {
         "canvas": "commonjs canvas",
-        "electron": "require('electron')"
+        "electron": "electron"
     },
+    "externalsType": "module",
     "mode": "production",
-    "node": {
-        "__dirname": false
+    "module": {
+        "parser": {
+            "javascript": {
+                "dynamicImportMode": "eager"
+            }
+        }
     },
     "optimization": {
         "minimize": true,
@@ -28,10 +31,11 @@ module.exports = [{
                     }
                 }
             })
-        ],
-        "moduleIds": "named"
+        ]
     },
     "output": {
+        "chunkFormat": "module",
+        "chunkLoading": "import",
         "clean": true,
         /**
          * Translate the chunk name to the right path (subfolder or not).
@@ -41,9 +45,10 @@ module.exports = [{
             if (data.chunk.name === "main") {
                 return "index.js"
             }
-            return `${data.chunk.name}/index.js`
+            return `${data.chunk.name}/index.mjs`
         },
-        "path": join(__dirname, "build")
+        "module": true,
+        "path": join(import.meta.dirname, "build")
     },
     "target": "node"
 }]

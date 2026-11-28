@@ -15,11 +15,10 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
-const {ipcRenderer} = require("electron")
-const {urlToString} = require("../util")
-const {translate} = require("./util")
+import {ipcRenderer} from "electron"
+import {urlToString} from "../util.js"
+import {translate} from "./util.js"
 
 /**
  * Add a site the the top sites or favorites list.

@@ -15,12 +15,11 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
-const {
+import {
     cpSync, mkdirSync, readdir, readFileSync, rmSync, unlinkSync
-} = require("node:fs")
-const {dirname, join} = require("node:path")
+} from "node:fs"
+import {dirname, join} from "node:path"
 
 const defaultConfig = {"config": {
     "appId": "com.github.Jelmerro.Vieb",
@@ -63,7 +62,7 @@ const defaultConfig = {"config": {
         "app/examples/*",
         "app/img/*.*",
         "!app/img/cheatsheet.svg",
-        "app/popups/*.js",
+        "app/popups/*.mjs",
         "app/translations/*.json",
         {"from": "build/", "to": "app/"},
         {"from": "app/index.html", "to": "app/index.html"},
@@ -143,7 +142,7 @@ const releases = {
         /** Skip Electron builder and only compress an asar file of the app. */
         "postinstall": async() => {
             rmSync("asar-build/", {"force": true, "recursive": true})
-            const {globSync} = require("glob")
+            const {globSync} = await import("glob")
             let files = []
             const filePatterns = defaultConfig.config.files
                 .filter(f => typeof f !== "object")
@@ -155,7 +154,7 @@ const releases = {
                 }
             }
             files = [...files, ...globSync("build/*"), "package.json"]
-            const asar = require("@electron/asar")
+            const asar = await import("@electron/asar")
             for (const file of files) {
                 const dest = join("./asar-build", file.replace(/^build/, "app"))
                 mkdirSync(dirname(dest), {"recursive": true})
@@ -258,7 +257,7 @@ const releases = {
             "productName": "Vieb-lite"
         },
         "webpack": {
-            "externals": [require("webpack-node-externals")()]
+            "externals": [(await import("webpack-node-externals")).default()]
         }
     },
     "regular": {
@@ -348,8 +347,8 @@ for (const a of process.argv.slice(2)) {
  * Merge the default webpack config with the custom options.
  * @param {import("webpack").Configuration} overrides
  */
-const mergeWPConfig = overrides => {
-    const mergedConfig = require("./webpack.config")
+const mergeWPConfig = async overrides => {
+    const mergedConfig = (await import("./webpack.config.js")).default
     return [{...mergedConfig[0], ...overrides}]
 }
 
@@ -368,9 +367,9 @@ const mergeEBConfig = overrides => {
  * Run a webpack build based on the combination of main and provided configs.
  * @param {import("webpack").Configuration} overrides
  */
-const webpackBuild = overrides => new Promise((res, rej) => {
-    const webpack = require("webpack")
-    webpack(mergeWPConfig(overrides)).run((webpackErr, stats) => {
+const webpackBuild = overrides => new Promise(async(res, rej) => {
+    const webpack = (await import("webpack")).default
+    webpack(await mergeWPConfig(overrides)).run((webpackErr, stats) => {
         console.info(stats.toString({"colors": true}))
         if (webpackErr || stats.hasErrors()) {
             return rej(webpackErr)
@@ -390,11 +389,11 @@ const generateBuild = async release => {
     }
     try {
         if (release.ebuilder !== false) {
-            const builder = require("electron-builder")
+            const {build} = await import("electron-builder")
             const config = mergeEBConfig(release.ebuilder || {})
             config.config.extraMetadata ??= {}
             config.config.extraMetadata.desktopName = defaultConfig.config.appId
-            const res = await builder.build(config)
+            const res = await build(config)
             console.info(res)
         }
         await release.postinstall?.()

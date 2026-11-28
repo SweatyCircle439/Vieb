@@ -15,10 +15,9 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
-const {contextBridge, ipcRenderer} = require("electron")
-const {
+import {contextBridge, ipcRenderer} from "electron"
+import {
     activeElement,
     findClickPosition,
     findElementAtPosition,
@@ -36,8 +35,8 @@ const {
     matchesQuery,
     propPixels,
     querySelectorAll
-} = require("../util")
-const {canScroll, getSetting} = require("./util")
+} from "../util.js"
+import {canScroll, getSetting} from "./util.js"
 
 /** @type {string[]|null} */
 let currentFollowStatus = null

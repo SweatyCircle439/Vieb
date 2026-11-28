@@ -17,7 +17,7 @@
     "funding": "https://github.com/sponsors/Jelmerro/",
     "license": "GPL-3.0-or-later",
     "author": "Jelmer van Arnhem",
-    "type": "commonjs",
+    "type": "module",
     "exports": "./app/*",
     "main": "./app/index.js",
     "scripts": {

@@ -15,10 +15,9 @@
 * You should have received a copy of the GNU General Public License
 * along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
-"use strict"
 
-const {ipcRenderer} = require("electron")
-const {
+import {ipcRenderer} from "electron"
+import {
     activeElement,
     fetchJSON,
     findElementAtPosition,
@@ -35,8 +34,8 @@ const {
     querySelectorAll,
     readFile,
     writeFile
-} = require("../util")
-const {canScroll, notify, translate} = require("./util")
+} from "../util.js"
+import {canScroll, notify, translate} from "./util.js"
 
 /**
  * Navigate to the next page if available.
