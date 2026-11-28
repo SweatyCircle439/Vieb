@@ -2192,7 +2192,8 @@ ipcMain.handle("create-session", async(_, name, adblock, cache) => {
         /** @type {import("highlight.js").HLJSApi|null} */
         let hljs = null
         try {
-            hljs = (await import("highlight.js")).default
+            const highlight = await import("highlight.js")
+            hljs = highlight.default
         } catch {
             return new Response(Buffer.from(`<!DOCTPYE html>\n<html><head>
                 <style id="default-styling">${defaultCSS}</style>
@@ -2305,7 +2306,8 @@ ipcMain.handle("create-session", async(_, name, adblock, cache) => {
         }
         let markedObj = new Marked()
         try {
-            const hljs = (await import("highlight.js")).default
+            const highlight = await import("highlight.js")
+            const hljs = highlight.default
             const {markedHighlight} = await import("marked-highlight")
             markedObj = new Marked(markedHighlight({
                 /**

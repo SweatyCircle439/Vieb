@@ -826,17 +826,17 @@ export const compareVersions = (v1Str, v2Str) => {
  */
 export const fetchUrl = (
     url, opts = {}, body = null
-) => new Promise(async(res, rej) => {
+) => new Promise((res, rej) => {
     let requestModule = null
     if (url.startsWith("https://")) {
-        requestModule = await import("node:https")
+        requestModule = import("node:https")
     } else if (url.startsWith("http://")) {
-        requestModule = await import("node:http")
+        requestModule = import("node:http")
     } else {
         rej(new Error("invalid protocol"))
         return
     }
-    const request = requestModule.request(url, opts, response => {
+    requestModule.then(v => v.request(url, opts, response => {
         let data = ""
         response.on("data", chunk => {
             data += chunk.toString()
@@ -848,12 +848,12 @@ export const fetchUrl = (
                 rej(new Error(`${error}: ${data}`))
             }
         })
-    })
-    request.on("error", err => rej(err))
-    if (body) {
-        request.write(body)
-    }
-    request.end()
+    })).then(v => v.on("error", err => rej(err))).then(v => {
+        if (body) {
+            v.write(body)
+        }
+        v.end()
+    }).catch(rej)
 })
 
 /**

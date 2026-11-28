@@ -126,6 +126,7 @@ const defaultConfig = {"config": {
         ]
     }
 }}
+const webpackNodeExternals = await import("webpack-node-externals")
 /**
  * @typedef {{
  *   description: string,
@@ -257,7 +258,7 @@ const releases = {
             "productName": "Vieb-lite"
         },
         "webpack": {
-            "externals": [(await import("webpack-node-externals")).default()]
+            "externals": [webpackNodeExternals.default()]
         }
     },
     "regular": {
@@ -348,7 +349,8 @@ for (const a of process.argv.slice(2)) {
  * @param {import("webpack").Configuration} overrides
  */
 const mergeWPConfig = async overrides => {
-    const mergedConfig = (await import("./webpack.config.js")).default
+    const webpackConfig = await import("./webpack.config.js")
+    const mergedConfig = webpackConfig.default
     return [{...mergedConfig[0], ...overrides}]
 }
 
@@ -367,15 +369,16 @@ const mergeEBConfig = overrides => {
  * Run a webpack build based on the combination of main and provided configs.
  * @param {import("webpack").Configuration} overrides
  */
-const webpackBuild = overrides => new Promise(async(res, rej) => {
-    const webpack = (await import("webpack")).default
-    webpack(await mergeWPConfig(overrides)).run((webpackErr, stats) => {
-        console.info(stats.toString({"colors": true}))
-        if (webpackErr || stats.hasErrors()) {
-            return rej(webpackErr)
-        }
-        res()
-    })
+const webpackBuild = overrides => new Promise((res, rej) => {
+    const webpack = import("webpack")
+    Promise.all([webpack, mergeWPConfig(overrides)])
+        .then(([wp, v]) => wp(v).run((webpackErr, stats) => {
+            console.info(stats.toString({"colors": true}))
+            if (webpackErr || stats.hasErrors()) {
+                return rej(webpackErr)
+            }
+            res()
+        }))
 })
 
 /**

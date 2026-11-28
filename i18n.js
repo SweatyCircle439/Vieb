@@ -19,8 +19,8 @@
 
 import {joinPath, listDir, readJSON, writeFile, writeJSON} from "./app/util.js"
 
-const files = (await listDir(joinPath(import.meta.dirname, "app/translations")))
-    .filter(f => f.endsWith(".json")).map(f => f.replace(/\.json$/, "")) ?? []
+const dir = await listDir(joinPath(import.meta.dirname, "app/translations"))
+const files = dir.filter(f => f.endsWith(".json")).map(f => f.replace(/\.json$/, "")) ?? []
 const translations = {}
 for (const f of files) {
     const contents = await readJSON(joinPath(import.meta.dirname,
